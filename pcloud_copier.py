@@ -543,8 +543,11 @@ class CopyEngine:
     def _do_buffered_copy(self, src: Path, dst: Path, file_rec: dict) -> str:
         hasher = hashlib.new(self._settings.hash_algorithm)
         bytes_copied = 0
+        last_stats_bytes = 0
         buf_size = self._settings.copy_buffer_size
         file_total = file_rec.get('size_bytes', 0)
+        # Byte threshold: send at least every ~5% of file (min 64KB)
+        byte_threshold = max(65536, file_total // 20) if file_total > 0 else 65536
 
         with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
             while True:
@@ -555,13 +558,21 @@ class CopyEngine:
                 hasher.update(chunk)
                 bytes_copied += len(chunk)
                 file_rec['bytes_copied'] = bytes_copied
-                # Send real-time stats throttled to ~4 updates/sec
+                # Send stats if enough time OR enough bytes have passed:
+                # - time: ~10 updates/sec on slow FUSE drives
+                # - bytes: ~20 updates/file on fast local drives
                 now = time.monotonic()
-                if now - self._last_stats_time >= 0.25:
+                time_ok = (now - self._last_stats_time) >= 0.10
+                bytes_ok = (bytes_copied - last_stats_bytes) >= byte_threshold
+                if time_ok or bytes_ok:
                     self._last_stats_time = now
+                    last_stats_bytes = bytes_copied
                     self._send_stats(bytes_copied, file_total)
             fdst.flush()
             os.fsync(fdst.fileno())
+
+        # Always send a final stats update so bar reaches ~100% before FILE_DONE
+        self._send_stats(bytes_copied, file_total)
 
         if bytes_copied != file_rec.get('size_bytes', 0):
             self._send(MsgType.LOG,

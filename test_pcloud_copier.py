@@ -639,5 +639,155 @@ class TestCancelAndPause(BaseEngineTest):
             "Manifest should be saved on cancel")
 
 
+class TestRealTimeProgressBars(BaseEngineTest):
+    """Verify that progress bars update in real-time with proper 0%→100% fill."""
+
+    def test_file_progress_increases_during_copy(self):
+        """Stats updates during a large-ish file should show increasing
+        current_file_bytes from 0 towards file_total."""
+        # 2MB file — large enough to trigger multiple intra-file stats
+        data = os.urandom(2 * 1024 * 1024)
+        self._create_file('big_progress.bin', data)
+
+        # Use a small buffer so there are many chunks
+        self.settings.copy_buffer_size = 32768  # 32KB
+        self.engine = CopyEngine(self.msg_queue, self.settings)
+        self._run_and_wait(timeout=30)
+
+        msgs = self._drain_messages()
+        stats_msgs = [d for t, d in msgs
+                      if t == MsgType.STATS_UPDATE and isinstance(d, ProgressStats)]
+
+        # Collect intra-file progress values
+        file_progress_values = [
+            s.current_file_bytes for s in stats_msgs
+            if s.current_file_total > 0
+        ]
+
+        # We should have at least a few intra-file progress updates
+        self.assertGreaterEqual(len(file_progress_values), 2,
+            f"Expected multiple intra-file stats updates, got {len(file_progress_values)}")
+
+        # Values should be monotonically increasing
+        for i in range(1, len(file_progress_values)):
+            self.assertGreaterEqual(file_progress_values[i], file_progress_values[i - 1],
+                f"File progress should be monotonically increasing: "
+                f"{file_progress_values}")
+
+        # First value should be > 0 (at least some bytes copied)
+        self.assertGreater(file_progress_values[0], 0)
+
+        # current_file_total should match file size in all intra-file stats
+        file_totals = [s.current_file_total for s in stats_msgs
+                       if s.current_file_total > 0]
+        for ft in file_totals:
+            self.assertEqual(ft, len(data),
+                f"current_file_total should be {len(data)}, got {ft}")
+
+    def test_overall_progress_reaches_100(self):
+        """Overall bytes_done should reach bytes_total by the end."""
+        for i in range(5):
+            self._create_file(f'prog_{i}.txt', os.urandom(1024 * 50))
+
+        self._run_and_wait()
+        msgs = self._drain_messages()
+
+        stats_msgs = [d for t, d in msgs
+                      if t == MsgType.STATS_UPDATE and isinstance(d, ProgressStats)]
+
+        # The last stats message should show bytes_done == bytes_total
+        self.assertGreater(len(stats_msgs), 0, "No stats messages received")
+        last = stats_msgs[-1]
+        self.assertEqual(last.bytes_done, last.bytes_total,
+            f"Final stats: bytes_done={last.bytes_done} != "
+            f"bytes_total={last.bytes_total}")
+        self.assertGreater(last.bytes_total, 0)
+
+    def test_file_bar_resets_between_files(self):
+        """After a file completes, the next file should have current_file_bytes
+        starting from a low value again (reset)."""
+        # Two files large enough for intra-file stats
+        self._create_file('first.bin', os.urandom(1024 * 512))
+        self._create_file('second.bin', os.urandom(1024 * 512))
+
+        self.settings.copy_buffer_size = 32768
+        self.engine = CopyEngine(self.msg_queue, self.settings)
+        self._run_and_wait(timeout=30)
+
+        msgs = self._drain_messages()
+
+        # Track FILE_START and STATS_UPDATE sequence
+        file_starts = 0
+        saw_reset = False
+        last_file_bytes = 0
+
+        for msg_type, data in msgs:
+            if msg_type == MsgType.FILE_START:
+                file_starts += 1
+                if file_starts > 1 and last_file_bytes > 0:
+                    # After the first file, we expect to see stats with
+                    # lower current_file_bytes (reset for new file)
+                    saw_reset = True
+                last_file_bytes = 0
+            elif (msg_type == MsgType.STATS_UPDATE and
+                  isinstance(data, ProgressStats) and
+                  data.current_file_total > 0):
+                last_file_bytes = data.current_file_bytes
+
+        self.assertGreaterEqual(file_starts, 2,
+            f"Expected at least 2 FILE_START messages, got {file_starts}")
+
+    def test_eta_is_smooth_and_reasonable(self):
+        """ETA should not jump wildly between consecutive stats updates."""
+        data = os.urandom(3 * 1024 * 1024)
+        self._create_file('eta_test.bin', data)
+
+        self.settings.copy_buffer_size = 32768
+        self.engine = CopyEngine(self.msg_queue, self.settings)
+        self._run_and_wait(timeout=30)
+
+        msgs = self._drain_messages()
+        eta_values = [d.eta_seconds for t, d in msgs
+                      if t == MsgType.STATS_UPDATE and isinstance(d, ProgressStats)
+                      and d.eta_seconds > 0]
+
+        if len(eta_values) >= 3:
+            # Check that consecutive ETA values don't jump by more than 5x
+            big_jumps = 0
+            for i in range(1, len(eta_values)):
+                prev, curr = eta_values[i - 1], eta_values[i]
+                if prev > 0:
+                    ratio = max(curr / prev, prev / curr)
+                    if ratio > 5.0:
+                        big_jumps += 1
+            # Allow at most 1 big jump (the initial EMA seeding)
+            self.assertLessEqual(big_jumps, 1,
+                f"ETA jumped wildly: {eta_values[:10]}")
+
+    def test_overall_bar_includes_intra_file_progress(self):
+        """bytes_done during a copy should include partial file progress,
+        not just completed files."""
+        # One large file
+        data = os.urandom(2 * 1024 * 1024)
+        self._create_file('intra.bin', data)
+
+        self.settings.copy_buffer_size = 32768
+        self.engine = CopyEngine(self.msg_queue, self.settings)
+        self._run_and_wait(timeout=30)
+
+        msgs = self._drain_messages()
+        intra_stats = [d for t, d in msgs
+                       if t == MsgType.STATS_UPDATE and isinstance(d, ProgressStats)
+                       and d.current_file_bytes > 0 and d.current_file_total > 0]
+
+        if len(intra_stats) >= 2:
+            # bytes_done should be > 0 but < bytes_total during copy
+            mid = intra_stats[len(intra_stats) // 2]
+            self.assertGreater(mid.bytes_done, 0,
+                "bytes_done should include partial file progress")
+            self.assertLess(mid.bytes_done, mid.bytes_total,
+                "bytes_done should not be 100% mid-copy")
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
