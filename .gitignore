@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.egg-info/
+dist/
+build/
+.pcloud_copy_manifest.json
+.pcloud_copier_write_test
+*.log
+.venv/
+venv/
