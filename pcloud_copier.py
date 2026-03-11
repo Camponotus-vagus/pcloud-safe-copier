@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import queue
+import subprocess
 import shutil
 import sys
 import threading
@@ -300,7 +301,6 @@ class CopyEngine:
             for entry in entries:
                 try:
                     rel = os.path.relpath(entry.path, root)
-                    rel = unicodedata.normalize('NFC', rel)
 
                     if entry.is_symlink():
                         if self._settings.skip_symlinks:
@@ -337,7 +337,6 @@ class CopyEngine:
             if not child_files and not child_dirs:
                 rel = os.path.relpath(current, root)
                 if current != root:
-                    rel = unicodedata.normalize('NFC', rel)
                     files.append(asdict(FileRecord(
                         rel_path=rel, is_empty_dir=True)))
 
@@ -590,7 +589,7 @@ class CopyEngine:
         file_rec['status'] = 'VERIFIED'
 
     def _resolve_dest_path(self, file_rec: dict) -> str:
-        rel = file_rec['rel_path']
+        rel = unicodedata.normalize('NFC', file_rec['rel_path'])
         lower = rel.lower()
         if lower in self._seen_paths_lower:
             existing = self._seen_paths_lower[lower]
@@ -866,6 +865,7 @@ def build_gui():
 
             self._build_ui()
             self._root.protocol("WM_DELETE_WINDOW", self._on_close)
+            self._root.bind("<Return>", self._on_enter_pressed)
 
             default = detect_pcloud_path()
             if default:
@@ -962,6 +962,10 @@ def build_gui():
             self._cancel_btn = ttk.Button(ctrl_frame, text="Cancel",
                 command=self._on_cancel, state=tk.DISABLED)
             self._cancel_btn.pack(side=tk.LEFT, padx=4)
+
+            self._open_dest_btn = ttk.Button(ctrl_frame, text="Open Destination",
+                command=self._on_open_dest)
+            self._open_dest_btn.pack(side=tk.LEFT, padx=4)
 
             ttk.Separator(ctrl_frame, orient=tk.VERTICAL).pack(
                 side=tk.LEFT, fill=tk.Y, padx=8)
@@ -1067,6 +1071,7 @@ def build_gui():
 
             self._resume_manifest = None
             self._start_btn.config(state=tk.DISABLED)
+            self._open_dest_btn.config(state=tk.DISABLED)
             self._manifest_btn.config(state=tk.DISABLED)
             self._pause_btn.config(state=tk.NORMAL)
             self._cancel_btn.config(state=tk.NORMAL)
@@ -1089,6 +1094,24 @@ def build_gui():
                 if messagebox.askyesno("Confirm",
                         "Cancel the copy?\nProgress is saved for resume."):
                     self._engine.cancel()
+
+        def _on_open_dest(self):
+            dest = self._dest_var.get().strip()
+            if not dest or not os.path.isdir(dest):
+                return
+            try:
+                if sys.platform == 'darwin':
+                    subprocess.run(['open', dest])
+                elif sys.platform == 'win32':
+                    os.startfile(dest)
+                else:
+                    subprocess.run(['xdg-open', dest])
+            except Exception as e:
+                self._log(f"Could not open destination: {e}", "warn")
+
+        def _on_enter_pressed(self, event):
+            if str(self._start_btn.cget('state')) == str(tk.NORMAL):
+                self._on_start()
 
         def _on_load_manifest(self):
             path = filedialog.askopenfilename(
@@ -1234,6 +1257,7 @@ def build_gui():
 
         def _on_finished(self, summary: dict):
             self._start_btn.config(state=tk.NORMAL)
+            self._open_dest_btn.config(state=tk.NORMAL)
             self._manifest_btn.config(state=tk.NORMAL)
             self._pause_btn.config(state=tk.DISABLED)
             self._resume_btn.config(state=tk.DISABLED)
