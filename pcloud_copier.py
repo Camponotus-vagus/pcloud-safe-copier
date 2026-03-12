@@ -963,6 +963,10 @@ def build_gui():
                 command=self._on_cancel, state=tk.DISABLED)
             self._cancel_btn.pack(side=tk.LEFT, padx=4)
 
+            self._open_src_btn = ttk.Button(ctrl_frame, text="Open Source",
+                command=self._on_open_source)
+            self._open_src_btn.pack(side=tk.LEFT, padx=4)
+
             self._open_dest_btn = ttk.Button(ctrl_frame, text="Open Destination",
                 command=self._on_open_dest)
             self._open_dest_btn.pack(side=tk.LEFT, padx=4)
@@ -1020,7 +1024,7 @@ def build_gui():
             ttk.Label(stats_frame2, textvariable=self._errors_var).pack(
                 side=tk.LEFT, padx=(0, 16))
             self._leaked_label = ttk.Label(
-                stats_frame2, textvariable=self._leaked_var, foreground="red")
+                stats_frame2, textvariable=self._leaked_var, foreground="#c62828")
             self._leaked_label.pack(side=tk.LEFT)
 
             # Log frame
@@ -1029,11 +1033,11 @@ def build_gui():
 
             self._log_text = scrolledtext.ScrolledText(
                 log_frame, height=12, state=tk.DISABLED,
-                font=("Menlo", 11), wrap=tk.WORD)
+                font="TkFixedFont", wrap=tk.WORD)
             self._log_text.pack(fill=tk.BOTH, expand=True)
             self._log_text.tag_configure("ok", foreground="#2e7d32")
             self._log_text.tag_configure("fail", foreground="#c62828")
-            self._log_text.tag_configure("warn", foreground="#f57f17")
+            self._log_text.tag_configure("warn", foreground="#af5200")
             self._log_text.tag_configure("info", foreground="#1565c0")
 
         # ── Button handlers ─────────────────────────────────────────
@@ -1071,6 +1075,7 @@ def build_gui():
 
             self._resume_manifest = None
             self._start_btn.config(state=tk.DISABLED)
+            self._open_src_btn.config(state=tk.DISABLED)
             self._open_dest_btn.config(state=tk.DISABLED)
             self._manifest_btn.config(state=tk.DISABLED)
             self._pause_btn.config(state=tk.NORMAL)
@@ -1095,19 +1100,24 @@ def build_gui():
                         "Cancel the copy?\nProgress is saved for resume."):
                     self._engine.cancel()
 
-        def _on_open_dest(self):
-            dest = self._dest_var.get().strip()
-            if not dest or not os.path.isdir(dest):
+        def _open_folder(self, path: str, description: str):
+            if not path or not os.path.isdir(path):
                 return
             try:
                 if sys.platform == 'darwin':
-                    subprocess.run(['open', dest])
+                    subprocess.run(['open', path])
                 elif sys.platform == 'win32':
-                    os.startfile(dest)
+                    os.startfile(path)
                 else:
-                    subprocess.run(['xdg-open', dest])
+                    subprocess.run(['xdg-open', path])
             except Exception as e:
-                self._log(f"Could not open destination: {e}", "warn")
+                self._log(f"Could not open {description}: {e}", "warn")
+
+        def _on_open_source(self):
+            self._open_folder(self._source_var.get().strip(), "source")
+
+        def _on_open_dest(self):
+            self._open_folder(self._dest_var.get().strip(), "destination")
 
         def _on_enter_pressed(self, event):
             if str(self._start_btn.cget('state')) == str(tk.NORMAL):
@@ -1255,8 +1265,15 @@ def build_gui():
                 self._leaked_var.set(
                     f"Stuck threads: {stats.leaked_threads}")
 
+            # Update window title with progress
+            pct = (stats.bytes_done / stats.bytes_total * 100) if stats.bytes_total > 0 else 0
+            eta = fmt_duration(stats.eta_seconds)
+            self._root.title(f"({pct:.0f}%) {eta} left — pCloud Safe Copier")
+
         def _on_finished(self, summary: dict):
+            self._root.title(f"pCloud Safe Copier v{__version__}")
             self._start_btn.config(state=tk.NORMAL)
+            self._open_src_btn.config(state=tk.NORMAL)
             self._open_dest_btn.config(state=tk.NORMAL)
             self._manifest_btn.config(state=tk.NORMAL)
             self._pause_btn.config(state=tk.DISABLED)
