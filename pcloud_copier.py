@@ -1348,6 +1348,8 @@ def build_gui():
         # ── Log helper ──────────────────────────────────────────────
 
         def _log(self, message: str, tag: str = "info"):
+            # Only auto-scroll if the user is already at the bottom
+            at_bottom = self._log_text.yview()[1] >= 0.99
             self._log_text.config(state=tk.NORMAL)
             ts = datetime.now().strftime("%H:%M:%S")
             self._log_text.insert(tk.END, f"[{ts}] {message}\n", tag)
@@ -1355,7 +1357,8 @@ def build_gui():
             line_count = int(self._log_text.index('end-1c').split('.')[0])
             if line_count > 1000:
                 self._log_text.delete('1.0', f'{line_count - 1000}.0')
-            self._log_text.see(tk.END)
+            if at_bottom:
+                self._log_text.see(tk.END)
             self._log_text.config(state=tk.DISABLED)
 
         def run(self):
