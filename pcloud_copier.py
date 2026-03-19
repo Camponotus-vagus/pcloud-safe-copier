@@ -26,7 +26,7 @@ import threading
 import time
 import unicodedata
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
@@ -914,19 +914,21 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._source_var, width=60).grid(
-                row=0, column=1, sticky=tk.EW, padx=4)
-            ttk.Button(path_frame, text="Browse...",
-                command=lambda: self._browse(self._source_var)).grid(
-                row=0, column=2)
+            self._src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
+            self._src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
+            self._src_entry.bind("<FocusIn>", self._select_all)
+            self._src_browse_btn = ttk.Button(path_frame, text="Browse...",
+                command=lambda: self._browse(self._source_var))
+            self._src_browse_btn.grid(row=0, column=2)
 
             ttk.Label(path_frame, text="Destination:").grid(
                 row=1, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._dest_var, width=60).grid(
-                row=1, column=1, sticky=tk.EW, padx=4)
-            ttk.Button(path_frame, text="Browse...",
-                command=lambda: self._browse(self._dest_var)).grid(
-                row=1, column=2)
+            self._dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
+            self._dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
+            self._dst_entry.bind("<FocusIn>", self._select_all)
+            self._dst_browse_btn = ttk.Button(path_frame, text="Browse...",
+                command=lambda: self._browse(self._dest_var))
+            self._dst_browse_btn.grid(row=1, column=2)
 
             path_frame.columnconfigure(1, weight=1)
 
@@ -1071,9 +1073,17 @@ def build_gui():
             ToolTip(self._resume_btn, "Resume the paused copy")
             ToolTip(self._cancel_btn, "Cancel the copy and save manifest (Esc)")
             ToolTip(self._manifest_btn, "Resume from a previously saved .json manifest")
+            ToolTip(self._open_dest_btn, "Open the destination folder in Finder/Explorer")
+            ToolTip(self._src_browse_btn, "Select the source folder to copy from")
+            ToolTip(self._dst_browse_btn, "Select the destination folder to copy to")
             ToolTip(self._leaked_label, "Threads currently frozen in FUSE reads. "
                                         "Engine will abort if too many threads hang.")
             ToolTip(settings_frame, "Configure FUSE-safe copy parameters")
+
+        def _select_all(self, event=None):
+            """Highlight all text in a widget."""
+            if event and hasattr(event.widget, 'selection_range'):
+                event.widget.selection_range(0, tk.END)
 
         def _get_mono_font(self):
             """Select the best available monospaced font for the platform."""
@@ -1279,9 +1289,15 @@ def build_gui():
 
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
+            pct = 0.0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+
+            # Update window title with progress
+            state_text = str(stats.engine_state).capitalize()
+            self._root.title(f"{pct:.0f}% {state_text} - pCloud Safe Copier")
+
             # Per-file progress bar from real-time intra-file bytes
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
@@ -1295,7 +1311,13 @@ def build_gui():
                 f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
-            self._eta_var.set(f"ETA: {fmt_duration(stats.eta_seconds)}")
+
+            eta_text = f"ETA: {fmt_duration(stats.eta_seconds)}"
+            if stats.eta_seconds > 0:
+                finish_at = (datetime.now() + timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
+                eta_text += f" (Finish at {finish_at})"
+            self._eta_var.set(eta_text)
+
             self._errors_var.set(
                 f"Failed: {stats.files_failed} | "
                 f"Skipped: {stats.files_skipped}")
@@ -1304,6 +1326,7 @@ def build_gui():
                     f"Stuck threads: {stats.leaked_threads}")
 
         def _on_finished(self, summary: dict):
+            self._root.title(f"pCloud Safe Copier v{__version__}")
             self._start_btn.config(state=tk.NORMAL)
             self._open_dest_btn.config(state=tk.NORMAL)
             self._manifest_btn.config(state=tk.NORMAL)
