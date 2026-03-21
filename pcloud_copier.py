@@ -26,7 +26,7 @@ import threading
 import time
 import unicodedata
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
@@ -914,16 +914,18 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._source_var, width=60).grid(
-                row=0, column=1, sticky=tk.EW, padx=4)
+            self._src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
+            self._src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
+            self._src_entry.bind("<FocusIn>", self._on_focus_in)
             ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._source_var)).grid(
                 row=0, column=2)
 
             ttk.Label(path_frame, text="Destination:").grid(
                 row=1, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._dest_var, width=60).grid(
-                row=1, column=1, sticky=tk.EW, padx=4)
+            self._dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
+            self._dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
+            self._dst_entry.bind("<FocusIn>", self._on_focus_in)
             ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._dest_var)).grid(
                 row=1, column=2)
@@ -1157,9 +1159,12 @@ def build_gui():
             except Exception as e:
                 self._log(f"Could not open destination: {e}", "warn")
 
-        def _on_enter_pressed(self, event):
+        def _on_enter_pressed(self, event=None):
             if str(self._start_btn.cget('state')) == str(tk.NORMAL):
                 self._on_start()
+
+        def _on_focus_in(self, event):
+            event.widget.selection_range(0, tk.END)
 
         def _on_load_manifest(self):
             path = filedialog.askopenfilename(
@@ -1263,6 +1268,7 @@ def build_gui():
             elif msg_type == MsgType.SCAN_PROGRESS:
                 self._current_file_var.set(
                     f"Scanning... ({data} directories)")
+                self._root.title(f"SCANNING - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATE_CHANGE:
                 self._current_file_var.set(f"State: {data}")
@@ -1279,9 +1285,14 @@ def build_gui():
 
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
+            pct = 0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+
+            # Update window title with progress
+            self._root.title(f"[{pct:.0f}%] {stats.engine_state} - pCloud Safe Copier v{__version__}")
+
             # Per-file progress bar from real-time intra-file bytes
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
@@ -1295,7 +1306,13 @@ def build_gui():
                 f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
-            self._eta_var.set(f"ETA: {fmt_duration(stats.eta_seconds)}")
+
+            eta_str = f"ETA: {fmt_duration(stats.eta_seconds)}"
+            if stats.eta_seconds > 0:
+                finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_str += f" (Finish at {finish_time.strftime('%H:%M')})"
+            self._eta_var.set(eta_str)
+
             self._errors_var.set(
                 f"Failed: {stats.files_failed} | "
                 f"Skipped: {stats.files_skipped}")
@@ -1304,6 +1321,7 @@ def build_gui():
                     f"Stuck threads: {stats.leaked_threads}")
 
         def _on_finished(self, summary: dict):
+            self._root.title(f"pCloud Safe Copier v{__version__}")
             self._start_btn.config(state=tk.NORMAL)
             self._open_dest_btn.config(state=tk.NORMAL)
             self._manifest_btn.config(state=tk.NORMAL)
