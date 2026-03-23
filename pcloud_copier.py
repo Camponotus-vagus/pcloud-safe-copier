@@ -1266,6 +1266,7 @@ def build_gui():
 
             elif msg_type == MsgType.STATE_CHANGE:
                 self._current_file_var.set(f"State: {data}")
+                self._root.title(f"[{data}] - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATS_UPDATE:
                 if isinstance(data, ProgressStats):
@@ -1282,6 +1283,9 @@ def build_gui():
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+                self._root.title(
+                    f"[{int(pct)}%] {stats.engine_state} - "
+                    f"pCloud Safe Copier v{__version__}")
             # Per-file progress bar from real-time intra-file bytes
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
@@ -1304,6 +1308,7 @@ def build_gui():
                     f"Stuck threads: {stats.leaked_threads}")
 
         def _on_finished(self, summary: dict):
+            self._root.title(f"pCloud Safe Copier v{__version__}")
             self._start_btn.config(state=tk.NORMAL)
             self._open_dest_btn.config(state=tk.NORMAL)
             self._manifest_btn.config(state=tk.NORMAL)
