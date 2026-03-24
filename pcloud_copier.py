@@ -26,7 +26,7 @@ import threading
 import time
 import unicodedata
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
@@ -914,19 +914,27 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._source_var, width=60).grid(
-                row=0, column=1, sticky=tk.EW, padx=4)
+            src_ent = ttk.Entry(
+                path_frame, textvariable=self._source_var, width=60)
+            src_ent.grid(row=0, column=1, sticky=tk.EW, padx=4)
             ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._source_var)).grid(
                 row=0, column=2)
 
             ttk.Label(path_frame, text="Destination:").grid(
                 row=1, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._dest_var, width=60).grid(
-                row=1, column=1, sticky=tk.EW, padx=4)
+            dst_ent = ttk.Entry(
+                path_frame, textvariable=self._dest_var, width=60)
+            dst_ent.grid(row=1, column=1, sticky=tk.EW, padx=4)
             ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._dest_var)).grid(
                 row=1, column=2)
+
+            # Auto-select text on focus for easier path editing
+            select_all = lambda e: e.widget.after_idle(
+                e.widget.selection_range, 0, tk.END)
+            src_ent.bind("<FocusIn>", select_all)
+            dst_ent.bind("<FocusIn>", select_all)
 
             path_frame.columnconfigure(1, weight=1)
 
@@ -1279,9 +1287,17 @@ def build_gui():
 
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
+            pct = 0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+
+            # Update window title with progress and state
+            title_pct = f"{int(pct)}%" if stats.bytes_total > 0 else "0%"
+            self._root.title(
+                f"[{title_pct}] {stats.engine_state.title()} — pCloud Safe Copier"
+            )
+
             # Per-file progress bar from real-time intra-file bytes
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
@@ -1295,7 +1311,14 @@ def build_gui():
                 f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
-            self._eta_var.set(f"ETA: {fmt_duration(stats.eta_seconds)}")
+
+            # ETA with "Finish at" time
+            eta_str = fmt_duration(stats.eta_seconds)
+            if stats.eta_seconds > 0 and stats.engine_state == "COPYING":
+                finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_str += f" (Finish at {finish_time.strftime('%H:%M')})"
+            self._eta_var.set(f"ETA: {eta_str}")
+
             self._errors_var.set(
                 f"Failed: {stats.files_failed} | "
                 f"Skipped: {stats.files_skipped}")
