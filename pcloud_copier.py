@@ -914,16 +914,20 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._source_var, width=60).grid(
-                row=0, column=1, sticky=tk.EW, padx=4)
+            self._source_entry = ttk.Entry(
+                path_frame, textvariable=self._source_var, width=60)
+            self._source_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
+            self._source_entry.bind("<FocusIn>", self._on_focus_in)
             ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._source_var)).grid(
                 row=0, column=2)
 
             ttk.Label(path_frame, text="Destination:").grid(
                 row=1, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._dest_var, width=60).grid(
-                row=1, column=1, sticky=tk.EW, padx=4)
+            self._dest_entry = ttk.Entry(
+                path_frame, textvariable=self._dest_var, width=60)
+            self._dest_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
+            self._dest_entry.bind("<FocusIn>", self._on_focus_in)
             ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._dest_var)).grid(
                 row=1, column=2)
@@ -1160,6 +1164,10 @@ def build_gui():
         def _on_enter_pressed(self, event):
             if str(self._start_btn.cget('state')) == str(tk.NORMAL):
                 self._on_start()
+
+        def _on_focus_in(self, event):
+            """Auto-select all text when an entry widget gains focus."""
+            event.widget.after_idle(event.widget.selection_range, 0, tk.END)
 
         def _on_load_manifest(self):
             path = filedialog.askopenfilename(
