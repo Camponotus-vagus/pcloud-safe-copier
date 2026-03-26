@@ -9,3 +9,7 @@
 ## 2025-05-16 - [Intelligent Log Scrolling for Real-Time Feedback]
 **Learning:** In applications with high-frequency logging (like file transfers), auto-scrolling can be disruptive if the user is trying to inspect previous entries. Implementing "smart" scrolling that only triggers if the user is already at the bottom of the view improves the experience by respecting the user's focus.
 **Action:** Before calling `see(tk.END)` in a Tkinter Text/ScrolledText widget, check if `widget.yview()[1] >= 0.99`.
+
+## 2025-05-17 - [Operational Visibility via Window Titles and ETA Refinements]
+**Learning:** For long-running background tasks, the window title is a high-value real estate for operational feedback, allowing users to monitor progress without switching windows. Additionally, providing an absolute finish time alongside a relative duration makes the ETA more actionable and easier for users to process.
+**Action:** Always include the current state and progress percentage in the root window title and supplement relative durations with calculated 'Finish at HH:MM' timestamps using `timedelta`.
