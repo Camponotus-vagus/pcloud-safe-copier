@@ -26,7 +26,7 @@ import threading
 import time
 import unicodedata
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
@@ -914,16 +914,18 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._source_var, width=60).grid(
-                row=0, column=1, sticky=tk.EW, padx=4)
+            src_ent = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
+            src_ent.grid(row=0, column=1, sticky=tk.EW, padx=4)
+            src_ent.bind("<FocusIn>", self._on_entry_focus)
             ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._source_var)).grid(
                 row=0, column=2)
 
             ttk.Label(path_frame, text="Destination:").grid(
                 row=1, column=0, sticky=tk.W)
-            ttk.Entry(path_frame, textvariable=self._dest_var, width=60).grid(
-                row=1, column=1, sticky=tk.EW, padx=4)
+            dst_ent = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
+            dst_ent.grid(row=1, column=1, sticky=tk.EW, padx=4)
+            dst_ent.bind("<FocusIn>", self._on_entry_focus)
             ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._dest_var)).grid(
                 row=1, column=2)
@@ -1084,6 +1086,10 @@ def build_gui():
             return ("monospace", 11)
 
         # ── Button handlers ─────────────────────────────────────────
+
+        def _on_entry_focus(self, event):
+            """Select all text in entry when focused."""
+            event.widget.after_idle(event.widget.selection_range, 0, tk.END)
 
         def _browse(self, var: tk.StringVar):
             path = filedialog.askdirectory(initialdir=var.get() or str(Path.home()))
@@ -1279,9 +1285,17 @@ def build_gui():
 
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
+            pct = 0.0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+
+            # Update title bar for external progress monitoring
+            title = f"pCloud Safe Copier v{__version__}"
+            if stats.engine_state != "IDLE":
+                title = f"[{pct:>.1f}%] {stats.engine_state} - {title}"
+            self._root.title(title)
+
             # Per-file progress bar from real-time intra-file bytes
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
@@ -1295,7 +1309,13 @@ def build_gui():
                 f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
-            self._eta_var.set(f"ETA: {fmt_duration(stats.eta_seconds)}")
+
+            eta_str = f"ETA: {fmt_duration(stats.eta_seconds)}"
+            if stats.eta_seconds > 0:
+                finish = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_str += f" (Finish at {finish.strftime('%H:%M')})"
+            self._eta_var.set(eta_str)
+
             self._errors_var.set(
                 f"Failed: {stats.files_failed} | "
                 f"Skipped: {stats.files_skipped}")

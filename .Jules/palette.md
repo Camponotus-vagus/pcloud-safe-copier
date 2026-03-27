@@ -9,3 +9,7 @@
 ## 2025-05-16 - [Intelligent Log Scrolling for Real-Time Feedback]
 **Learning:** In applications with high-frequency logging (like file transfers), auto-scrolling can be disruptive if the user is trying to inspect previous entries. Implementing "smart" scrolling that only triggers if the user is already at the bottom of the view improves the experience by respecting the user's focus.
 **Action:** Before calling `see(tk.END)` in a Tkinter Text/ScrolledText widget, check if `widget.yview()[1] >= 0.99`.
+
+## 2026-03-27 - [Reliable Auto-Selection in Tkinter Entry Widgets]
+**Learning:** When implementing auto-selection on `<FocusIn>` for `Entry` widgets, using `widget.after_idle(widget.selection_range, 0, tk.END)` prevents the selection from being immediately cleared by the mouse-up event if focus was triggered by a click.
+**Action:** Always wrap `selection_range` in `after_idle` for focus-based text selection.
