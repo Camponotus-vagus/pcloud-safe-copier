@@ -9,3 +9,7 @@
 ## 2025-05-16 - [Intelligent Log Scrolling for Real-Time Feedback]
 **Learning:** In applications with high-frequency logging (like file transfers), auto-scrolling can be disruptive if the user is trying to inspect previous entries. Implementing "smart" scrolling that only triggers if the user is already at the bottom of the view improves the experience by respecting the user's focus.
 **Action:** Before calling `see(tk.END)` in a Tkinter Text/ScrolledText widget, check if `widget.yview()[1] >= 0.99`.
+
+## 2025-05-17 - [Enhanced Feedback for Long-Running Background Operations]
+**Learning:** For desktop applications performing long-running tasks like file copying, providing the absolute completion time (e.g., "Finish at 14:30") is more intuitive for users than a relative countdown (e.g., "30m 5s"). Additionally, reflecting the current state and progress in the window title allows users to monitor the process without switching focus to the application.
+**Action:** Always include an absolute timestamp in ETA calculations when possible and update the window title dynamically during active operations.
