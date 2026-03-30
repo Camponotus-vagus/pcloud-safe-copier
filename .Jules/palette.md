@@ -23,6 +23,9 @@
 **Learning:** In applications with high-frequency logging (like file transfers), auto-scrolling can be disruptive if the user is trying to inspect previous entries. Implementing "smart" scrolling that only triggers if the user is already at the bottom of the view improves the experience by respecting the user's focus.
 **Action:** Before calling `see(tk.END)` in a Tkinter Text/ScrolledText widget, check if `widget.yview()[1] >= 0.99`.
 
+## 2025-05-17 - [Real-time Operational Feedback in Window Title]
+**Learning:** For long-running operations like file copies, displaying the overall progress percentage and engine state in the window title enables users to monitor progress from their taskbar or window switcher without switching focus. Additionally, translating relative ETA durations into absolute "Finish at HH:MM" timestamps provides more intuitive time management for the user.
+**Action:** In future GUI applications with progress tracking, prioritize updating the main window title with key status metrics and provide both relative and absolute completion estimates.
 ## 2025-05-17 - [Operational Feedback via Window Title and Absolute ETA]
 **Learning:** For long-running batch operations like file copies, providing progress feedback in the window title is a significant UX win, allowing users to monitor status from the taskbar when minimized. Additionally, supplementing a countdown ETA with a calculated "Finish at HH:MM" timestamp provides a more intuitive sense of when the task will be done.
 **Action:** Update the window title with progress percentage and state during operations. Use `datetime.now() + timedelta(seconds=eta)` to display an absolute completion time.

@@ -1180,6 +1180,8 @@ def build_gui():
             if path:
                 var.set(path)
 
+        def _on_start(self):
+            self._root.title(f"[Starting...] pCloud Safe Copier v{__version__}")
         def _on_start(self, event=None):
             source = self._source_var.get().strip()
             dest = self._dest_var.get().strip()
@@ -1366,11 +1368,13 @@ def build_gui():
                 self._file_progress['value'] = 100
 
             elif msg_type == MsgType.SCAN_PROGRESS:
+                self._root.title(f"[Scanning...] pCloud Safe Copier v{__version__}")
                 self._current_file_var.set(
                     f"Scanning... ({data} directories)")
                 self._root.title(f"SCANNING - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATE_CHANGE:
+                self._root.title(f"[{data}] pCloud Safe Copier v{__version__}")
                 self._current_file_var.set(f"State: {data}")
 
             elif msg_type == MsgType.STATS_UPDATE:
@@ -1386,6 +1390,10 @@ def build_gui():
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
             pct = 0
+            if stats.bytes_total > 0:
+                pct = (stats.bytes_done / stats.bytes_total) * 100
+                self._overall_progress['value'] = pct
+                self._root.title(f"[{pct:.1f}%] [{stats.engine_state}] pCloud Safe Copier v{__version__}")
             pct = 0.0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
