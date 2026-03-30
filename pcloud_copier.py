@@ -1452,6 +1452,8 @@ def build_gui():
         # ── Log helper ──────────────────────────────────────────────
 
         def _log(self, message: str, tag: str = "info"):
+            # Only auto-scroll if the user is already at the bottom
+            at_bottom = self._log_text.yview()[1] >= 0.99
             # Check if user is scrolled to the bottom before adding text
             at_bottom = self._log_text.yview()[1] >= 0.99
             # Only auto-scroll if the user is already at the bottom
