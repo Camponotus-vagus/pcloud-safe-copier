@@ -9,3 +9,7 @@
 ## 2025-05-16 - [Intelligent Log Scrolling for Real-Time Feedback]
 **Learning:** In applications with high-frequency logging (like file transfers), auto-scrolling can be disruptive if the user is trying to inspect previous entries. Implementing "smart" scrolling that only triggers if the user is already at the bottom of the view improves the experience by respecting the user's focus.
 **Action:** Before calling `see(tk.END)` in a Tkinter Text/ScrolledText widget, check if `widget.yview()[1] >= 0.99`.
+
+## 2025-05-17 - [Operational Feedback with Absolute Timestamps]
+**Learning:** Providing an ETA in terms of duration (e.g., "3m 32s") is helpful, but augmenting it with an absolute finish time (e.g., "Finish at 14:45") provides better situational awareness for the user. Using `timedelta` makes this easy to implement in Python.
+**Action:** Always consider adding absolute finish times to progress displays where an ETA is available.
