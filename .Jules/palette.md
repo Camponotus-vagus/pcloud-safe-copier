@@ -23,6 +23,9 @@
 **Learning:** In applications with high-frequency logging (like file transfers), auto-scrolling can be disruptive if the user is trying to inspect previous entries. Implementing "smart" scrolling that only triggers if the user is already at the bottom of the view improves the experience by respecting the user's focus.
 **Action:** Before calling `see(tk.END)` in a Tkinter Text/ScrolledText widget, check if `widget.yview()[1] >= 0.99`.
 
+## 2025-05-17 - [Enhancing Path Input Usability and Status Visibility]
+**Learning:** For desktop applications where users frequently copy or replace file paths, binding `<FocusIn>` to `selection_range(0, tk.END)` provides a significant usability boost. Additionally, mirroring progress and state in the window title enables "passive monitoring" from the taskbar/dock, reducing the need for active window focus.
+**Action:** In Tkinter apps, always auto-select path entry text on focus and reflect high-level operation status in the root window title.
 ## 2025-05-17 - [Enhanced Operational Feedback and Path Entry UX]
 **Learning:** For long-running operations like file copying, providing feedback in the window title allows users to monitor progress while the window is in the background. Additionally, adding a "Finish at" time to the ETA provides more concrete context than just a duration. For path inputs, auto-selecting text on focus significantly speeds up common user actions like replacing or editing paths.
 **Action:** Implement window title progress updates and "Finish at" timestamps for ETA. Use <FocusIn> bindings for path entries to improve keyboard efficiency.

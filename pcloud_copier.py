@@ -942,6 +942,21 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
+            src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
+            src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
+            src_entry.bind("<FocusIn>", lambda e: src_entry.selection_range(0, tk.END))
+            ttk.Button(path_frame, text="Browse...",
+                command=lambda: self._browse(self._source_var)).grid(
+                row=0, column=2)
+
+            ttk.Label(path_frame, text="Destination:").grid(
+                row=1, column=0, sticky=tk.W)
+            dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
+            dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
+            dst_entry.bind("<FocusIn>", lambda e: dst_entry.selection_range(0, tk.END))
+            ttk.Button(path_frame, text="Browse...",
+                command=lambda: self._browse(self._dest_var)).grid(
+                row=1, column=2)
             self._src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
             self._src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
             self._src_entry.bind("<FocusIn>", self._select_all)
@@ -1359,12 +1374,14 @@ def build_gui():
 
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
+            pct = 0
             pct = 0.0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
 
             # Update window title with progress
+            self._root.title(f"[{pct:2.0f}%] {stats.engine_state} — pCloud Safe Copier")
             state_text = str(stats.engine_state).capitalize()
             self._root.title(f"{pct:.0f}% {state_text} - pCloud Safe Copier")
                 # Update window title with progress
@@ -1394,6 +1411,11 @@ def build_gui():
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
 
+            eta_str = fmt_duration(stats.eta_seconds)
+            if stats.eta_seconds > 0:
+                finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_str += f" (Finish at {finish_time.strftime('%H:%M')})"
+            self._eta_var.set(f"ETA: {eta_str}")
             eta_text = f"ETA: {fmt_duration(stats.eta_seconds)}"
             if stats.eta_seconds > 0:
                 finish_at = (datetime.now() + timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
