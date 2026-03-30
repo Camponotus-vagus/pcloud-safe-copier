@@ -1310,6 +1310,12 @@ def build_gui():
                 finish_at = datetime.now() + timedelta(seconds=stats.eta_seconds)
                 eta_text += f" (Finish at {finish_at.strftime('%H:%M')})"
             self._eta_var.set(eta_text)
+            eta_str = fmt_duration(stats.eta_seconds)
+            if stats.eta_seconds > 0:
+                finish_at = (datetime.now() +
+                             timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
+                eta_str += f" (Finish at {finish_at})"
+            self._eta_var.set(f"ETA: {eta_str}")
 
             self._errors_var.set(
                 f"Failed: {stats.files_failed} | "
