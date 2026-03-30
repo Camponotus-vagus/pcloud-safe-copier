@@ -26,7 +26,7 @@ import threading
 import time
 import unicodedata
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
@@ -1295,7 +1295,14 @@ def build_gui():
                 f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
-            self._eta_var.set(f"ETA: {fmt_duration(stats.eta_seconds)}")
+
+            eta_str = fmt_duration(stats.eta_seconds)
+            if stats.eta_seconds > 0:
+                finish_at = (datetime.now() +
+                             timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
+                eta_str += f" (Finish at {finish_at})"
+            self._eta_var.set(f"ETA: {eta_str}")
+
             self._errors_var.set(
                 f"Failed: {stats.files_failed} | "
                 f"Skipped: {stats.files_skipped}")
