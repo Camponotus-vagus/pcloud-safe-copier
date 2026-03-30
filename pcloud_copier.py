@@ -26,7 +26,7 @@ import threading
 import time
 import unicodedata
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
@@ -809,6 +809,8 @@ class CopyEngine:
 def fmt_bytes(n: float) -> str:
     for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
         if abs(n) < 1024:
+            if unit == 'B':
+                return f"{n:.0f} {unit}"
             return f"{n:.1f} {unit}"
         n /= 1024
     return f"{n:.1f} PB"
@@ -869,6 +871,32 @@ def build_gui():
                              background="#ffffe0", relief=tk.SOLID, borderwidth=1,
                              font=("tahoma", "9", "normal"))
             label.pack(ipadx=1)
+
+        def hide_tip(self, event=None):
+            tw = self.tip_window
+            self.tip_window = None
+            if tw:
+                tw.destroy()
+
+    class ToolTip:
+        def __init__(self, widget, text):
+            self.widget = widget
+            self.text = text
+            self.tip_window = None
+            widget.bind("<Enter>", self.show_tip)
+            widget.bind("<Leave>", self.hide_tip)
+
+        def show_tip(self, event=None):
+            if self.tip_window or not self.text:
+                return
+            x = self.widget.winfo_rootx() + 20
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 2
+            self.tip_window = tw = tk.Toplevel(self.widget)
+            tw.wm_overrideredirect(True)
+            tw.wm_geometry(f"+{x}+{y}")
+            tk.Label(tw, text=self.text, justify=tk.LEFT, background="#ffffe0",
+                     relief=tk.SOLID, borderwidth=1,
+                     font=("tahoma", "10", "normal"), padx=4, pady=2).pack()
 
         def hide_tip(self, event=None):
             tw = self.tip_window
@@ -943,28 +971,38 @@ def build_gui():
             self._preserve_var = tk.BooleanVar(value=self._settings.preserve_metadata)
 
             row = 0
-            ttk.Label(settings_frame, text="Pause between files (s):").grid(
-                row=row, column=0, sticky=tk.W)
-            ttk.Spinbox(settings_frame, from_=0.1, to=30.0, increment=0.5,
-                textvariable=self._pause_var, width=8).grid(
-                row=row, column=1, sticky=tk.W, padx=4)
+            pause_lbl = ttk.Label(settings_frame, text="Pause between files (s):")
+            pause_lbl.grid(row=row, column=0, sticky=tk.W)
+            pause_spn = ttk.Spinbox(settings_frame, from_=0.1, to=30.0, increment=0.5,
+                textvariable=self._pause_var, width=8)
+            pause_spn.grid(row=row, column=1, sticky=tk.W, padx=4)
 
-            ttk.Label(settings_frame, text="File timeout (s):").grid(
-                row=row, column=2, sticky=tk.W, padx=(16, 0))
-            ttk.Spinbox(settings_frame, from_=30, to=600, increment=30,
-                textvariable=self._timeout_var, width=8).grid(
-                row=row, column=3, sticky=tk.W, padx=4)
+            timeout_lbl = ttk.Label(settings_frame, text="File timeout (s):")
+            timeout_lbl.grid(row=row, column=2, sticky=tk.W, padx=(16, 0))
+            timeout_spn = ttk.Spinbox(settings_frame, from_=30, to=600, increment=30,
+                textvariable=self._timeout_var, width=8)
+            timeout_spn.grid(row=row, column=3, sticky=tk.W, padx=4)
 
-            ttk.Label(settings_frame, text="Max retries:").grid(
-                row=row, column=4, sticky=tk.W, padx=(16, 0))
-            ttk.Spinbox(settings_frame, from_=0, to=10, increment=1,
-                textvariable=self._retries_var, width=5).grid(
-                row=row, column=5, sticky=tk.W, padx=4)
+            retries_lbl = ttk.Label(settings_frame, text="Max retries:")
+            retries_lbl.grid(row=row, column=4, sticky=tk.W, padx=(16, 0))
+            retries_spn = ttk.Spinbox(settings_frame, from_=0, to=10, increment=1,
+                textvariable=self._retries_var, width=5)
+            retries_spn.grid(row=row, column=5, sticky=tk.W, padx=4)
 
             row = 1
-            ttk.Checkbutton(settings_frame, text="Verify integrity (hash)",
-                variable=self._verify_var).grid(
-                row=row, column=0, columnspan=2, sticky=tk.W)
+            verify_chk = ttk.Checkbutton(settings_frame, text="Verify integrity (hash)",
+                variable=self._verify_var)
+            verify_chk.grid(row=row, column=0, columnspan=2, sticky=tk.W)
+
+            for w, t in [
+                (pause_lbl, "Wait between files to let FUSE driver recover."),
+                (pause_spn, "Wait between files to let FUSE driver recover."),
+                (timeout_lbl, "Max time for a single file before it's considered frozen."),
+                (timeout_spn, "Max time for a single file before it's considered frozen."),
+                (retries_lbl, "Retry attempts if a file copy fails or times out."),
+                (retries_spn, "Retry attempts if a file copy fails or times out."),
+                (verify_chk, "Compute hashes (Blake2b) to ensure data integrity."),
+            ]: ToolTip(w, t)
             ttk.Checkbutton(settings_frame, text="Skip symlinks",
                 variable=self._skip_sym_var).grid(
                 row=row, column=2, columnspan=2, sticky=tk.W)
@@ -992,6 +1030,10 @@ def build_gui():
                 command=self._on_cancel, state=tk.DISABLED)
             self._cancel_btn.pack(side=tk.LEFT, padx=4)
 
+            self._open_src_btn = ttk.Button(ctrl_frame, text="Open Source",
+                command=self._on_open_source)
+            self._open_src_btn.pack(side=tk.LEFT, padx=4)
+
             self._open_dest_btn = ttk.Button(ctrl_frame, text="Open Destination",
                 command=self._on_open_dest)
             self._open_dest_btn.pack(side=tk.LEFT, padx=4)
@@ -1003,6 +1045,14 @@ def build_gui():
                 text="Load Manifest (Resume)",
                 command=self._on_load_manifest)
             self._manifest_btn.pack(side=tk.LEFT, padx=4)
+
+            for w, t in [
+                (self._start_btn, "Begin the sequential file copy process."),
+                (self._pause_btn, "Halt copy after current file."),
+                (self._resume_btn, "Continue copy from where it was paused."),
+                (self._cancel_btn, "Stop copy and save manifest."),
+                (self._manifest_btn, "Resume interrupted copy from .json manifest."),
+            ]: ToolTip(w, t)
 
             # Progress frame
             prog_frame = ttk.LabelFrame(
@@ -1049,20 +1099,29 @@ def build_gui():
             ttk.Label(stats_frame2, textvariable=self._errors_var).pack(
                 side=tk.LEFT, padx=(0, 16))
             self._leaked_label = ttk.Label(
-                stats_frame2, textvariable=self._leaked_var, foreground="red")
+                stats_frame2, textvariable=self._leaked_var, foreground="#c62828")
             self._leaked_label.pack(side=tk.LEFT)
 
             # Log frame
             log_frame = ttk.LabelFrame(self._root, text="Log", padding=4)
             log_frame.pack(fill=tk.BOTH, expand=True, **pad)
 
+            from tkinter import font as tkfont
+            avail = tkfont.families()
+            mono = "monospace"
+            for f in ("Menlo", "Consolas", "Monaco", "Courier New"):
+                if f in avail:
+                    mono = f
+                    break
             self._log_text = scrolledtext.ScrolledText(
                 log_frame, height=12, state=tk.DISABLED,
+                font=(mono, 11), wrap=tk.WORD)
+                font="TkFixedFont", wrap=tk.WORD)
                 font=self._get_mono_font(), wrap=tk.WORD)
             self._log_text.pack(fill=tk.BOTH, expand=True)
             self._log_text.tag_configure("ok", foreground="#2e7d32")
             self._log_text.tag_configure("fail", foreground="#c62828")
-            self._log_text.tag_configure("warn", foreground="#f57f17")
+            self._log_text.tag_configure("warn", foreground="#af5200")
             self._log_text.tag_configure("info", foreground="#1565c0")
 
             # Add tooltips
@@ -1118,6 +1177,8 @@ def build_gui():
 
             self._resume_manifest = None
             self._start_btn.config(state=tk.DISABLED, text="Start Copy")
+            self._start_btn.config(state=tk.DISABLED)
+            self._open_src_btn.config(state=tk.DISABLED)
             self._open_dest_btn.config(state=tk.DISABLED)
             self._manifest_btn.config(state=tk.DISABLED)
             self._pause_btn.config(state=tk.NORMAL)
@@ -1146,16 +1207,24 @@ def build_gui():
         def _on_open_dest(self, event=None):
             dest = self._dest_var.get().strip()
             if not dest or not os.path.isdir(dest):
+        def _open_folder(self, path: str, description: str):
+            if not path or not os.path.isdir(path):
                 return
             try:
                 if sys.platform == 'darwin':
-                    subprocess.run(['open', dest])
+                    subprocess.run(['open', path])
                 elif sys.platform == 'win32':
-                    os.startfile(dest)
+                    os.startfile(path)
                 else:
-                    subprocess.run(['xdg-open', dest])
+                    subprocess.run(['xdg-open', path])
             except Exception as e:
-                self._log(f"Could not open destination: {e}", "warn")
+                self._log(f"Could not open {description}: {e}", "warn")
+
+        def _on_open_source(self):
+            self._open_folder(self._source_var.get().strip(), "source")
+
+        def _on_open_dest(self):
+            self._open_folder(self._dest_var.get().strip(), "destination")
 
         def _on_enter_pressed(self, event):
             if str(self._start_btn.cget('state')) == str(tk.NORMAL):
@@ -1280,9 +1349,23 @@ def build_gui():
 
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
+            pct = 0.0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+                # Update window title with progress
+                title = f"[{pct:.0f}%] pCloud Safe Copier"
+                if stats.eta_seconds > 0:
+                    title += f" - {fmt_duration(stats.eta_seconds)} left"
+                self._root.title(title)
+
+            # Dynamic window title with state and progress
+            state_text = stats.engine_state.title()
+            if stats.engine_state in ("COPYING", "SCANNING"):
+                self._root.title(f"{state_text} ({pct:.1f}%) - pCloud Safe Copier v{__version__}")
+            else:
+                self._root.title(f"{state_text} - pCloud Safe Copier v{__version__}")
+
             # Per-file progress bar from real-time intra-file bytes
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
@@ -1296,7 +1379,19 @@ def build_gui():
                 f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
-            self._eta_var.set(f"ETA: {fmt_duration(stats.eta_seconds)}")
+
+            eta_text = f"ETA: {fmt_duration(stats.eta_seconds)}"
+            if stats.eta_seconds > 0:
+                finish_at = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_text += f" (Finish at {finish_at.strftime('%H:%M')})"
+            self._eta_var.set(eta_text)
+            eta_str = fmt_duration(stats.eta_seconds)
+            if stats.eta_seconds > 0:
+                finish_at = (datetime.now() +
+                             timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
+                eta_str += f" (Finish at {finish_at})"
+            self._eta_var.set(f"ETA: {eta_str}")
+
             self._errors_var.set(
                 f"Failed: {stats.files_failed} | "
                 f"Skipped: {stats.files_skipped}")
@@ -1304,8 +1399,16 @@ def build_gui():
                 self._leaked_var.set(
                     f"Stuck threads: {stats.leaked_threads}")
 
+            # Update window title with progress
+            pct = (stats.bytes_done / stats.bytes_total * 100) if stats.bytes_total > 0 else 0
+            eta = fmt_duration(stats.eta_seconds)
+            self._root.title(f"({pct:.0f}%) {eta} left — pCloud Safe Copier")
+
         def _on_finished(self, summary: dict):
             self._start_btn.config(state=tk.NORMAL, text="Start Copy")
+            self._root.title(f"pCloud Safe Copier v{__version__}")
+            self._start_btn.config(state=tk.NORMAL)
+            self._open_src_btn.config(state=tk.NORMAL)
             self._open_dest_btn.config(state=tk.NORMAL)
             self._manifest_btn.config(state=tk.NORMAL)
             self._pause_btn.config(state=tk.DISABLED)
@@ -1351,13 +1454,18 @@ def build_gui():
         def _log(self, message: str, tag: str = "info"):
             # Check if user is scrolled to the bottom before adding text
             at_bottom = self._log_text.yview()[1] >= 0.99
+            # Only auto-scroll if the user is already at the bottom
+            at_bottom = self._log_text.yview()[1] >= 0.99
+
             self._log_text.config(state=tk.NORMAL)
             ts = datetime.now().strftime("%H:%M:%S")
             self._log_text.insert(tk.END, f"[{ts}] {message}\n", tag)
+
             # Prune to 1000 lines
             line_count = int(self._log_text.index('end-1c').split('.')[0])
             if line_count > 1000:
                 self._log_text.delete('1.0', f'{line_count - 1000}.0')
+
             if at_bottom:
                 self._log_text.see(tk.END)
             self._log_text.config(state=tk.DISABLED)
