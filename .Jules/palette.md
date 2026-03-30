@@ -23,6 +23,9 @@
 **Learning:** In applications with high-frequency logging (like file transfers), auto-scrolling can be disruptive if the user is trying to inspect previous entries. Implementing "smart" scrolling that only triggers if the user is already at the bottom of the view improves the experience by respecting the user's focus.
 **Action:** Before calling `see(tk.END)` in a Tkinter Text/ScrolledText widget, check if `widget.yview()[1] >= 0.99`.
 
+## 2026-03-24 - [Enhanced Progress Visibility and Path Entry UX]
+**Learning:** For long-running operations like file copying, mirroring the progress percentage and current engine state in the application's window title provides a "passive" status check for users when the app is in the background. Additionally, using `after_idle` with `selection_range` on `Entry` widgets ensures that the text selection is not immediately cleared by a mouse-up event when the user clicks to focus the field.
+**Action:** Always include taskbar/title-bar progress updates for background-capable tasks, and use `after_idle` for robust auto-selection on focus in Tkinter applications.
 ## 2025-05-17 - [Real-time Operational Feedback in Window Title]
 **Learning:** For long-running operations like file copies, displaying the overall progress percentage and engine state in the window title enables users to monitor progress from their taskbar or window switcher without switching focus. Additionally, translating relative ETA durations into absolute "Finish at HH:MM" timestamps provides more intuitive time management for the user.
 **Action:** In future GUI applications with progress tracking, prioritize updating the main window title with key status metrics and provide both relative and absolute completion estimates.

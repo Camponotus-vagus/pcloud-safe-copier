@@ -942,6 +942,9 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
+            src_ent = ttk.Entry(
+                path_frame, textvariable=self._source_var, width=60)
+            src_ent.grid(row=0, column=1, sticky=tk.EW, padx=4)
             self._src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
             self._src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
             self._src_entry.bind("<FocusIn>", self._on_focus_in)
@@ -954,6 +957,9 @@ def build_gui():
 
             ttk.Label(path_frame, text="Destination:").grid(
                 row=1, column=0, sticky=tk.W)
+            dst_ent = ttk.Entry(
+                path_frame, textvariable=self._dest_var, width=60)
+            dst_ent.grid(row=1, column=1, sticky=tk.EW, padx=4)
             self._dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
             self._dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
             self._dst_entry.bind("<FocusIn>", self._on_focus_in)
@@ -978,6 +984,12 @@ def build_gui():
             self._dst_browse_btn = ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._dest_var))
             self._dst_browse_btn.grid(row=1, column=2)
+
+            # Auto-select text on focus for easier path editing
+            select_all = lambda e: e.widget.after_idle(
+                e.widget.selection_range, 0, tk.END)
+            src_ent.bind("<FocusIn>", select_all)
+            dst_ent.bind("<FocusIn>", select_all)
 
             path_frame.columnconfigure(1, weight=1)
 
@@ -1394,6 +1406,15 @@ def build_gui():
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+
+            # Update window title with progress and state
+            title_pct = f"{int(pct)}%" if stats.bytes_total > 0 else "0%"
+            self._root.title(
+                f"[{title_pct}] {stats.engine_state.title()} — pCloud Safe Copier"
+            )
+            if stats.bytes_total > 0:
+                pct = (stats.bytes_done / stats.bytes_total) * 100
+                self._overall_progress['value'] = pct
                 self._root.title(f"[{pct:.1f}%] [{stats.engine_state}] pCloud Safe Copier v{__version__}")
             pct = 0.0
             if stats.bytes_total > 0:
@@ -1435,6 +1456,12 @@ def build_gui():
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
 
+            # ETA with "Finish at" time
+            eta_str = fmt_duration(stats.eta_seconds)
+            if stats.eta_seconds > 0 and stats.engine_state == "COPYING":
+                finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_str += f" (Finish at {finish_time.strftime('%H:%M')})"
+            self._eta_var.set(f"ETA: {eta_str}")
             eta_str = f"ETA: {fmt_duration(stats.eta_seconds)}"
             if stats.eta_seconds > 0:
                 finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
