@@ -1412,6 +1412,12 @@ def build_gui():
 
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
+            title = f"{stats.engine_state} - pCloud Safe Copier v{__version__}"
+            if stats.bytes_total > 0:
+                pct = (stats.bytes_done / stats.bytes_total) * 100
+                self._overall_progress['value'] = pct
+                title = f"[{pct:.0f}%] {title}"
+            self._root.title(title)
             pct = 0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
