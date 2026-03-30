@@ -942,6 +942,10 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
+            self._source_entry = ttk.Entry(
+                path_frame, textvariable=self._source_var, width=60)
+            self._source_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
+            self._source_entry.bind("<FocusIn>", self._on_focus_in)
             src_ent = ttk.Entry(
                 path_frame, textvariable=self._source_var, width=60)
             src_ent.grid(row=0, column=1, sticky=tk.EW, padx=4)
@@ -957,6 +961,10 @@ def build_gui():
 
             ttk.Label(path_frame, text="Destination:").grid(
                 row=1, column=0, sticky=tk.W)
+            self._dest_entry = ttk.Entry(
+                path_frame, textvariable=self._dest_var, width=60)
+            self._dest_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
+            self._dest_entry.bind("<FocusIn>", self._on_focus_in)
             dst_ent = ttk.Entry(
                 path_frame, textvariable=self._dest_var, width=60)
             dst_ent.grid(row=1, column=1, sticky=tk.EW, padx=4)
@@ -1276,6 +1284,8 @@ def build_gui():
                 self._on_start()
 
         def _on_focus_in(self, event):
+            """Auto-select all text when an entry widget gains focus."""
+            event.widget.after_idle(event.widget.selection_range, 0, tk.END)
             event.widget.selection_range(0, tk.END)
 
         def _on_load_manifest(self):
