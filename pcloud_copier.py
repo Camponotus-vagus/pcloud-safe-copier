@@ -942,6 +942,9 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
+            self._src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
+            self._src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
+            self._src_entry.bind("<FocusIn>", self._on_focus_in)
             src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
             src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
             src_entry.bind("<FocusIn>", lambda e: src_entry.selection_range(0, tk.END))
@@ -951,6 +954,9 @@ def build_gui():
 
             ttk.Label(path_frame, text="Destination:").grid(
                 row=1, column=0, sticky=tk.W)
+            self._dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
+            self._dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
+            self._dst_entry.bind("<FocusIn>", self._on_focus_in)
             dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
             dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
             dst_entry.bind("<FocusIn>", lambda e: dst_entry.selection_range(0, tk.END))
@@ -1251,10 +1257,14 @@ def build_gui():
         def _on_open_dest(self):
             self._open_folder(self._dest_var.get().strip(), "destination")
 
-        def _on_enter_pressed(self, event):
+        def _on_enter_pressed(self, event=None):
             if str(self._start_btn.cget('state')) == str(tk.NORMAL):
                 self._on_start()
 
+        def _on_focus_in(self, event):
+            event.widget.selection_range(0, tk.END)
+
+        def _on_load_manifest(self):
         def _on_load_manifest(self, event=None):
             path = filedialog.askopenfilename(
                 title="Select resume manifest",
@@ -1358,6 +1368,7 @@ def build_gui():
             elif msg_type == MsgType.SCAN_PROGRESS:
                 self._current_file_var.set(
                     f"Scanning... ({data} directories)")
+                self._root.title(f"SCANNING - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATE_CHANGE:
                 self._current_file_var.set(f"State: {data}")
@@ -1381,6 +1392,7 @@ def build_gui():
                 self._overall_progress['value'] = pct
 
             # Update window title with progress
+            self._root.title(f"[{pct:.0f}%] {stats.engine_state} - pCloud Safe Copier v{__version__}")
             self._root.title(f"[{pct:2.0f}%] {stats.engine_state} — pCloud Safe Copier")
             state_text = str(stats.engine_state).capitalize()
             self._root.title(f"{pct:.0f}% {state_text} - pCloud Safe Copier")
@@ -1411,6 +1423,11 @@ def build_gui():
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
 
+            eta_str = f"ETA: {fmt_duration(stats.eta_seconds)}"
+            if stats.eta_seconds > 0:
+                finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_str += f" (Finish at {finish_time.strftime('%H:%M')})"
+            self._eta_var.set(eta_str)
             eta_str = fmt_duration(stats.eta_seconds)
             if stats.eta_seconds > 0:
                 finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
