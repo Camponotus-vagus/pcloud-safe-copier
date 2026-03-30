@@ -32,10 +32,10 @@ class TestUtilityFunctions(unittest.TestCase):
     """Test fmt_bytes and fmt_duration."""
 
     def test_fmt_bytes_zero(self):
-        self.assertEqual(fmt_bytes(0), "0.0 B")
+        self.assertEqual(fmt_bytes(0), "0 B")
 
     def test_fmt_bytes_bytes(self):
-        self.assertEqual(fmt_bytes(512), "512.0 B")
+        self.assertEqual(fmt_bytes(512), "512 B")
 
     def test_fmt_bytes_kb(self):
         self.assertEqual(fmt_bytes(1536), "1.5 KB")
