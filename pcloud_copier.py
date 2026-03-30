@@ -809,6 +809,8 @@ class CopyEngine:
 def fmt_bytes(n: float) -> str:
     for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
         if abs(n) < 1024:
+            if unit == 'B':
+                return f"{n:.0f} {unit}"
             return f"{n:.1f} {unit}"
         n /= 1024
     return f"{n:.1f} PB"
@@ -869,6 +871,32 @@ def build_gui():
                              background="#ffffe0", relief=tk.SOLID, borderwidth=1,
                              font=("tahoma", "9", "normal"))
             label.pack(ipadx=1)
+
+        def hide_tip(self, event=None):
+            tw = self.tip_window
+            self.tip_window = None
+            if tw:
+                tw.destroy()
+
+    class ToolTip:
+        def __init__(self, widget, text):
+            self.widget = widget
+            self.text = text
+            self.tip_window = None
+            widget.bind("<Enter>", self.show_tip)
+            widget.bind("<Leave>", self.hide_tip)
+
+        def show_tip(self, event=None):
+            if self.tip_window or not self.text:
+                return
+            x = self.widget.winfo_rootx() + 20
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 2
+            self.tip_window = tw = tk.Toplevel(self.widget)
+            tw.wm_overrideredirect(True)
+            tw.wm_geometry(f"+{x}+{y}")
+            tk.Label(tw, text=self.text, justify=tk.LEFT, background="#ffffe0",
+                     relief=tk.SOLID, borderwidth=1,
+                     font=("tahoma", "10", "normal"), padx=4, pady=2).pack()
 
         def hide_tip(self, event=None):
             tw = self.tip_window
@@ -943,28 +971,38 @@ def build_gui():
             self._preserve_var = tk.BooleanVar(value=self._settings.preserve_metadata)
 
             row = 0
-            ttk.Label(settings_frame, text="Pause between files (s):").grid(
-                row=row, column=0, sticky=tk.W)
-            ttk.Spinbox(settings_frame, from_=0.1, to=30.0, increment=0.5,
-                textvariable=self._pause_var, width=8).grid(
-                row=row, column=1, sticky=tk.W, padx=4)
+            pause_lbl = ttk.Label(settings_frame, text="Pause between files (s):")
+            pause_lbl.grid(row=row, column=0, sticky=tk.W)
+            pause_spn = ttk.Spinbox(settings_frame, from_=0.1, to=30.0, increment=0.5,
+                textvariable=self._pause_var, width=8)
+            pause_spn.grid(row=row, column=1, sticky=tk.W, padx=4)
 
-            ttk.Label(settings_frame, text="File timeout (s):").grid(
-                row=row, column=2, sticky=tk.W, padx=(16, 0))
-            ttk.Spinbox(settings_frame, from_=30, to=600, increment=30,
-                textvariable=self._timeout_var, width=8).grid(
-                row=row, column=3, sticky=tk.W, padx=4)
+            timeout_lbl = ttk.Label(settings_frame, text="File timeout (s):")
+            timeout_lbl.grid(row=row, column=2, sticky=tk.W, padx=(16, 0))
+            timeout_spn = ttk.Spinbox(settings_frame, from_=30, to=600, increment=30,
+                textvariable=self._timeout_var, width=8)
+            timeout_spn.grid(row=row, column=3, sticky=tk.W, padx=4)
 
-            ttk.Label(settings_frame, text="Max retries:").grid(
-                row=row, column=4, sticky=tk.W, padx=(16, 0))
-            ttk.Spinbox(settings_frame, from_=0, to=10, increment=1,
-                textvariable=self._retries_var, width=5).grid(
-                row=row, column=5, sticky=tk.W, padx=4)
+            retries_lbl = ttk.Label(settings_frame, text="Max retries:")
+            retries_lbl.grid(row=row, column=4, sticky=tk.W, padx=(16, 0))
+            retries_spn = ttk.Spinbox(settings_frame, from_=0, to=10, increment=1,
+                textvariable=self._retries_var, width=5)
+            retries_spn.grid(row=row, column=5, sticky=tk.W, padx=4)
 
             row = 1
-            ttk.Checkbutton(settings_frame, text="Verify integrity (hash)",
-                variable=self._verify_var).grid(
-                row=row, column=0, columnspan=2, sticky=tk.W)
+            verify_chk = ttk.Checkbutton(settings_frame, text="Verify integrity (hash)",
+                variable=self._verify_var)
+            verify_chk.grid(row=row, column=0, columnspan=2, sticky=tk.W)
+
+            for w, t in [
+                (pause_lbl, "Wait between files to let FUSE driver recover."),
+                (pause_spn, "Wait between files to let FUSE driver recover."),
+                (timeout_lbl, "Max time for a single file before it's considered frozen."),
+                (timeout_spn, "Max time for a single file before it's considered frozen."),
+                (retries_lbl, "Retry attempts if a file copy fails or times out."),
+                (retries_spn, "Retry attempts if a file copy fails or times out."),
+                (verify_chk, "Compute hashes (Blake2b) to ensure data integrity."),
+            ]: ToolTip(w, t)
             ttk.Checkbutton(settings_frame, text="Skip symlinks",
                 variable=self._skip_sym_var).grid(
                 row=row, column=2, columnspan=2, sticky=tk.W)
@@ -1007,6 +1045,14 @@ def build_gui():
                 text="Load Manifest (Resume)",
                 command=self._on_load_manifest)
             self._manifest_btn.pack(side=tk.LEFT, padx=4)
+
+            for w, t in [
+                (self._start_btn, "Begin the sequential file copy process."),
+                (self._pause_btn, "Halt copy after current file."),
+                (self._resume_btn, "Continue copy from where it was paused."),
+                (self._cancel_btn, "Stop copy and save manifest."),
+                (self._manifest_btn, "Resume interrupted copy from .json manifest."),
+            ]: ToolTip(w, t)
 
             # Progress frame
             prog_frame = ttk.LabelFrame(
@@ -1060,8 +1106,16 @@ def build_gui():
             log_frame = ttk.LabelFrame(self._root, text="Log", padding=4)
             log_frame.pack(fill=tk.BOTH, expand=True, **pad)
 
+            from tkinter import font as tkfont
+            avail = tkfont.families()
+            mono = "monospace"
+            for f in ("Menlo", "Consolas", "Monaco", "Courier New"):
+                if f in avail:
+                    mono = f
+                    break
             self._log_text = scrolledtext.ScrolledText(
                 log_frame, height=12, state=tk.DISABLED,
+                font=(mono, 11), wrap=tk.WORD)
                 font="TkFixedFont", wrap=tk.WORD)
                 font=self._get_mono_font(), wrap=tk.WORD)
             self._log_text.pack(fill=tk.BOTH, expand=True)
@@ -1294,6 +1348,11 @@ def build_gui():
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+                # Update window title with progress
+                title = f"[{pct:.0f}%] pCloud Safe Copier"
+                if stats.eta_seconds > 0:
+                    title += f" - {fmt_duration(stats.eta_seconds)} left"
+                self._root.title(title)
 
             # Dynamic window title with state and progress
             state_text = stats.engine_state.title()
