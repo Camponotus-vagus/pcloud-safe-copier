@@ -26,7 +26,7 @@ import threading
 import time
 import unicodedata
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
@@ -846,7 +846,35 @@ def detect_pcloud_path() -> str:
 def build_gui():
     """Build and run the tkinter GUI. Imported lazily to allow headless use."""
     import tkinter as tk
-    from tkinter import ttk, filedialog, messagebox, scrolledtext
+    from tkinter import ttk, filedialog, messagebox, scrolledtext, font
+
+    class ToolTip:
+        """Lightweight tooltip for tkinter widgets."""
+        def __init__(self, widget, text):
+            self.widget = widget
+            self.text = text
+            self.tip_window = None
+            widget.bind("<Enter>", self.show_tip)
+            widget.bind("<Leave>", self.hide_tip)
+
+        def show_tip(self, event=None):
+            if self.tip_window or not self.text:
+                return
+            x = self.widget.winfo_rootx() + 20
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+            self.tip_window = tw = tk.Toplevel(self.widget)
+            tw.wm_overrideredirect(True)
+            tw.wm_geometry(f"+{x}+{y}")
+            label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+                             background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                             font=("tahoma", "9", "normal"))
+            label.pack(ipadx=1)
+
+        def hide_tip(self, event=None):
+            tw = self.tip_window
+            self.tip_window = None
+            if tw:
+                tw.destroy()
 
     class CopierGUI:
         POLL_MS = 100
@@ -866,6 +894,7 @@ def build_gui():
             self._build_ui()
             self._root.protocol("WM_DELETE_WINDOW", self._on_close)
             self._root.bind("<Return>", self._on_enter_pressed)
+            self._root.bind("<Escape>", self._on_cancel)
 
             default = detect_pcloud_path()
             if default:
@@ -1034,11 +1063,30 @@ def build_gui():
             self._log_text = scrolledtext.ScrolledText(
                 log_frame, height=12, state=tk.DISABLED,
                 font="TkFixedFont", wrap=tk.WORD)
+                font=self._get_mono_font(), wrap=tk.WORD)
             self._log_text.pack(fill=tk.BOTH, expand=True)
             self._log_text.tag_configure("ok", foreground="#2e7d32")
             self._log_text.tag_configure("fail", foreground="#c62828")
             self._log_text.tag_configure("warn", foreground="#af5200")
             self._log_text.tag_configure("info", foreground="#1565c0")
+
+            # Add tooltips
+            ToolTip(self._start_btn, "Start the copy process (Enter)")
+            ToolTip(self._pause_btn, "Temporarily pause copying")
+            ToolTip(self._resume_btn, "Resume the paused copy")
+            ToolTip(self._cancel_btn, "Cancel the copy and save manifest (Esc)")
+            ToolTip(self._manifest_btn, "Resume from a previously saved .json manifest")
+            ToolTip(self._leaked_label, "Threads currently frozen in FUSE reads. "
+                                        "Engine will abort if too many threads hang.")
+            ToolTip(settings_frame, "Configure FUSE-safe copy parameters")
+
+        def _get_mono_font(self):
+            """Select the best available monospaced font for the platform."""
+            families = font.families()
+            for f in ("Menlo", "Consolas", "Cascadia Code", "Monaco", "Courier New"):
+                if f in families:
+                    return (f, 11)
+            return ("monospace", 11)
 
         # ── Button handlers ─────────────────────────────────────────
 
@@ -1094,8 +1142,9 @@ def build_gui():
                 self._resume_btn.config(state=tk.DISABLED)
                 self._pause_btn.config(state=tk.NORMAL)
 
-        def _on_cancel(self):
-            if self._engine:
+        def _on_cancel(self, event=None):
+            if self._engine and self._engine.state in (
+                    EngineState.COPYING, EngineState.PAUSED, EngineState.SCANNING):
                 if messagebox.askyesno("Confirm",
                         "Cancel the copy?\nProgress is saved for resume."):
                     self._engine.cancel()
@@ -1241,9 +1290,18 @@ def build_gui():
 
         def _update_stats(self, stats: ProgressStats):
             # Overall progress bar (bytes-based, includes current file)
+            pct = 0.0
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+
+            # Dynamic window title with state and progress
+            state_text = stats.engine_state.title()
+            if stats.engine_state in ("COPYING", "SCANNING"):
+                self._root.title(f"{state_text} ({pct:.1f}%) - pCloud Safe Copier v{__version__}")
+            else:
+                self._root.title(f"{state_text} - pCloud Safe Copier v{__version__}")
+
             # Per-file progress bar from real-time intra-file bytes
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
@@ -1257,7 +1315,19 @@ def build_gui():
                 f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
             self._rate_var.set(
                 f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
-            self._eta_var.set(f"ETA: {fmt_duration(stats.eta_seconds)}")
+
+            eta_text = f"ETA: {fmt_duration(stats.eta_seconds)}"
+            if stats.eta_seconds > 0:
+                finish_at = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_text += f" (Finish at {finish_at.strftime('%H:%M')})"
+            self._eta_var.set(eta_text)
+            eta_str = fmt_duration(stats.eta_seconds)
+            if stats.eta_seconds > 0:
+                finish_at = (datetime.now() +
+                             timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
+                eta_str += f" (Finish at {finish_at})"
+            self._eta_var.set(f"ETA: {eta_str}")
+
             self._errors_var.set(
                 f"Failed: {stats.files_failed} | "
                 f"Skipped: {stats.files_skipped}")
@@ -1317,14 +1387,20 @@ def build_gui():
         # ── Log helper ──────────────────────────────────────────────
 
         def _log(self, message: str, tag: str = "info"):
+            # Only auto-scroll if the user is already at the bottom
+            at_bottom = self._log_text.yview()[1] >= 0.99
+
             self._log_text.config(state=tk.NORMAL)
             ts = datetime.now().strftime("%H:%M:%S")
             self._log_text.insert(tk.END, f"[{ts}] {message}\n", tag)
+
             # Prune to 1000 lines
             line_count = int(self._log_text.index('end-1c').split('.')[0])
             if line_count > 1000:
                 self._log_text.delete('1.0', f'{line_count - 1000}.0')
-            self._log_text.see(tk.END)
+
+            if at_bottom:
+                self._log_text.see(tk.END)
             self._log_text.config(state=tk.DISABLED)
 
         def run(self):
