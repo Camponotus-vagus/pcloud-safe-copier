@@ -1376,6 +1376,7 @@ def build_gui():
             elif msg_type == MsgType.STATE_CHANGE:
                 self._root.title(f"[{data}] pCloud Safe Copier v{__version__}")
                 self._current_file_var.set(f"State: {data}")
+                self._root.title(f"[{data}] - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATS_UPDATE:
                 if isinstance(data, ProgressStats):
@@ -1398,6 +1399,9 @@ def build_gui():
             if stats.bytes_total > 0:
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
+                self._root.title(
+                    f"[{int(pct)}%] {stats.engine_state} - "
+                    f"pCloud Safe Copier v{__version__}")
 
             # Update window title with progress
             self._root.title(f"[{pct:.0f}%] {stats.engine_state} - pCloud Safe Copier v{__version__}")
