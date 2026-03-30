@@ -1458,6 +1458,9 @@ def build_gui():
             at_bottom = self._log_text.yview()[1] >= 0.99
 
             self._log_text.config(state=tk.NORMAL)
+            # Intelligent scrolling: only snap to bottom if already there
+            at_bottom = self._log_text.yview()[1] >= 0.99
+
             ts = datetime.now().strftime("%H:%M:%S")
             self._log_text.insert(tk.END, f"[{ts}] {message}\n", tag)
 
