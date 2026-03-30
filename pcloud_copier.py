@@ -1149,7 +1149,7 @@ def build_gui():
             if path:
                 var.set(path)
 
-        def _on_start(self):
+        def _on_start(self, event=None):
             source = self._source_var.get().strip()
             dest = self._dest_var.get().strip()
 
@@ -1176,6 +1176,7 @@ def build_gui():
                 return
 
             self._resume_manifest = None
+            self._start_btn.config(state=tk.DISABLED, text="Start Copy")
             self._start_btn.config(state=tk.DISABLED)
             self._open_src_btn.config(state=tk.DISABLED)
             self._open_dest_btn.config(state=tk.DISABLED)
@@ -1184,13 +1185,13 @@ def build_gui():
             self._cancel_btn.config(state=tk.NORMAL)
             self._start_polling()
 
-        def _on_pause(self):
+        def _on_pause(self, event=None):
             if self._engine:
                 self._engine.pause()
                 self._pause_btn.config(state=tk.DISABLED)
                 self._resume_btn.config(state=tk.NORMAL)
 
-        def _on_resume(self):
+        def _on_resume(self, event=None):
             if self._engine:
                 self._engine.resume()
                 self._resume_btn.config(state=tk.DISABLED)
@@ -1203,6 +1204,9 @@ def build_gui():
                         "Cancel the copy?\nProgress is saved for resume."):
                     self._engine.cancel()
 
+        def _on_open_dest(self, event=None):
+            dest = self._dest_var.get().strip()
+            if not dest or not os.path.isdir(dest):
         def _open_folder(self, path: str, description: str):
             if not path or not os.path.isdir(path):
                 return
@@ -1226,7 +1230,7 @@ def build_gui():
             if str(self._start_btn.cget('state')) == str(tk.NORMAL):
                 self._on_start()
 
-        def _on_load_manifest(self):
+        def _on_load_manifest(self, event=None):
             path = filedialog.askopenfilename(
                 title="Select resume manifest",
                 filetypes=[("JSON manifest", "*.json"), ("All", "*")],
@@ -1240,6 +1244,7 @@ def build_gui():
                 self._source_var.set(manifest.get('source_root', ''))
                 self._dest_var.set(manifest.get('dest_root', ''))
                 self._resume_manifest = manifest
+                self._start_btn.config(text="Resume Copy")
 
                 total = len(manifest.get('files', []))
                 done = sum(1 for f in manifest.get('files', [])
@@ -1400,6 +1405,7 @@ def build_gui():
             self._root.title(f"({pct:.0f}%) {eta} left — pCloud Safe Copier")
 
         def _on_finished(self, summary: dict):
+            self._start_btn.config(state=tk.NORMAL, text="Start Copy")
             self._root.title(f"pCloud Safe Copier v{__version__}")
             self._start_btn.config(state=tk.NORMAL)
             self._open_src_btn.config(state=tk.NORMAL)
@@ -1446,6 +1452,8 @@ def build_gui():
         # ── Log helper ──────────────────────────────────────────────
 
         def _log(self, message: str, tag: str = "info"):
+            # Check if user is scrolled to the bottom before adding text
+            at_bottom = self._log_text.yview()[1] >= 0.99
             # Only auto-scroll if the user is already at the bottom
             at_bottom = self._log_text.yview()[1] >= 0.99
 
