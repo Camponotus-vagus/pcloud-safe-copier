@@ -50,6 +50,11 @@
 ## 2025-05-17 - [Enhanced Feedback for Long-Running Background Operations]
 **Learning:** For desktop applications performing long-running tasks like file copying, providing the absolute completion time (e.g., "Finish at 14:30") is more intuitive for users than a relative countdown (e.g., "30m 5s"). Additionally, reflecting the current state and progress in the window title allows users to monitor the process without switching focus to the application.
 **Action:** Always include an absolute timestamp in ETA calculations when possible and update the window title dynamically during active operations.
+
+## 2026-04-10 - [Clipboard Integration and Keyboard Shortcut Discoverability]
+**Learning:** For desktop applications with logs or detailed status output, a "Copy Log" button provides significant utility for troubleshooting. Integrating system clipboard operations using `root.clipboard_clear()` and `root.clipboard_append()` is a low-overhead way to add this feature in Tkinter. Additionally, including keyboard shortcut hints (e.g., "(Enter)" or "(Esc)") in tooltips enhances discoverability for power users without cluttering the main UI.
+**Action:** Always include a "Copy Log/Report" action for long-running operations and mention keyboard shortcuts in tooltips for primary actions.
+
 ## 2025-05-17 - [Operational Feedback with Absolute Timestamps]
 **Learning:** Providing an ETA in terms of duration (e.g., "3m 32s") is helpful, but augmenting it with an absolute finish time (e.g., "Finish at 14:45") provides better situational awareness for the user. Using `timedelta` makes this easy to implement in Python.
 **Action:** Always consider adding absolute finish times to progress displays where an ETA is available.
