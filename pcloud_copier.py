@@ -863,33 +863,6 @@ def build_gui():
             if self.tip_window or not self.text:
                 return
             x = self.widget.winfo_rootx() + 20
-            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
-            self.tip_window = tw = tk.Toplevel(self.widget)
-            tw.wm_overrideredirect(True)
-            tw.wm_geometry(f"+{x}+{y}")
-            label = tk.Label(tw, text=self.text, justify=tk.LEFT,
-                             background="#ffffe0", relief=tk.SOLID, borderwidth=1,
-                             font=("tahoma", "9", "normal"))
-            label.pack(ipadx=1)
-
-        def hide_tip(self, event=None):
-            tw = self.tip_window
-            self.tip_window = None
-            if tw:
-                tw.destroy()
-
-    class ToolTip:
-        def __init__(self, widget, text):
-            self.widget = widget
-            self.text = text
-            self.tip_window = None
-            widget.bind("<Enter>", self.show_tip)
-            widget.bind("<Leave>", self.hide_tip)
-
-        def show_tip(self, event=None):
-            if self.tip_window or not self.text:
-                return
-            x = self.widget.winfo_rootx() + 20
             y = self.widget.winfo_rooty() + self.widget.winfo_height() + 2
             self.tip_window = tw = tk.Toplevel(self.widget)
             tw.wm_overrideredirect(True)
@@ -942,50 +915,8 @@ def build_gui():
 
             ttk.Label(path_frame, text="Source:").grid(
                 row=0, column=0, sticky=tk.W)
-            src_ent = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
-            src_ent.grid(row=0, column=1, sticky=tk.EW, padx=4)
-            src_ent.bind("<FocusIn>", self._on_entry_focus)
-            self._source_entry = ttk.Entry(
-                path_frame, textvariable=self._source_var, width=60)
-            self._source_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
-            self._source_entry.bind("<FocusIn>", self._on_focus_in)
-            src_ent = ttk.Entry(
-                path_frame, textvariable=self._source_var, width=60)
-            src_ent.grid(row=0, column=1, sticky=tk.EW, padx=4)
             self._src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
             self._src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
-            self._src_entry.bind("<FocusIn>", self._on_focus_in)
-            src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
-            src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
-            src_entry.bind("<FocusIn>", lambda e: src_entry.selection_range(0, tk.END))
-            ttk.Button(path_frame, text="Browse...",
-                command=lambda: self._browse(self._source_var)).grid(
-                row=0, column=2)
-
-            ttk.Label(path_frame, text="Destination:").grid(
-                row=1, column=0, sticky=tk.W)
-            dst_ent = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
-            dst_ent.grid(row=1, column=1, sticky=tk.EW, padx=4)
-            dst_ent.bind("<FocusIn>", self._on_entry_focus)
-            self._dest_entry = ttk.Entry(
-                path_frame, textvariable=self._dest_var, width=60)
-            self._dest_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
-            self._dest_entry.bind("<FocusIn>", self._on_focus_in)
-            dst_ent = ttk.Entry(
-                path_frame, textvariable=self._dest_var, width=60)
-            dst_ent.grid(row=1, column=1, sticky=tk.EW, padx=4)
-            self._dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
-            self._dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
-            self._dst_entry.bind("<FocusIn>", self._on_focus_in)
-            dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
-            dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
-            dst_entry.bind("<FocusIn>", lambda e: dst_entry.selection_range(0, tk.END))
-            ttk.Button(path_frame, text="Browse...",
-                command=lambda: self._browse(self._dest_var)).grid(
-                row=1, column=2)
-            self._src_entry = ttk.Entry(path_frame, textvariable=self._source_var, width=60)
-            self._src_entry.grid(row=0, column=1, sticky=tk.EW, padx=4)
-            self._src_entry.bind("<FocusIn>", self._select_all)
             self._src_browse_btn = ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._source_var))
             self._src_browse_btn.grid(row=0, column=2)
@@ -994,7 +925,6 @@ def build_gui():
                 row=1, column=0, sticky=tk.W)
             self._dst_entry = ttk.Entry(path_frame, textvariable=self._dest_var, width=60)
             self._dst_entry.grid(row=1, column=1, sticky=tk.EW, padx=4)
-            self._dst_entry.bind("<FocusIn>", self._select_all)
             self._dst_browse_btn = ttk.Button(path_frame, text="Browse...",
                 command=lambda: self._browse(self._dest_var))
             self._dst_browse_btn.grid(row=1, column=2)
@@ -1002,8 +932,8 @@ def build_gui():
             # Auto-select text on focus for easier path editing
             select_all = lambda e: e.widget.after_idle(
                 e.widget.selection_range, 0, tk.END)
-            src_ent.bind("<FocusIn>", select_all)
-            dst_ent.bind("<FocusIn>", select_all)
+            self._src_entry.bind("<FocusIn>", select_all)
+            self._dst_entry.bind("<FocusIn>", select_all)
 
             path_frame.columnconfigure(1, weight=1)
 
@@ -1155,17 +1085,14 @@ def build_gui():
             log_frame = ttk.LabelFrame(self._root, text="Log", padding=4)
             log_frame.pack(fill=tk.BOTH, expand=True, **pad)
 
-            from tkinter import font as tkfont
-            avail = tkfont.families()
-            mono = "monospace"
-            for f in ("Menlo", "Consolas", "Monaco", "Courier New"):
-                if f in avail:
-                    mono = f
-                    break
+            log_header = ttk.Frame(log_frame)
+            log_header.pack(fill=tk.X, padx=4, pady=(0, 4))
+            self._copy_log_btn = ttk.Button(log_header, text="Copy Log",
+                                           command=self._on_copy_log)
+            self._copy_log_btn.pack(side=tk.RIGHT)
+
             self._log_text = scrolledtext.ScrolledText(
                 log_frame, height=12, state=tk.DISABLED,
-                font=(mono, 11), wrap=tk.WORD)
-                font="TkFixedFont", wrap=tk.WORD)
                 font=self._get_mono_font(), wrap=tk.WORD)
             self._log_text.pack(fill=tk.BOTH, expand=True)
             self._log_text.tag_configure("ok", foreground="#2e7d32")
@@ -1182,6 +1109,7 @@ def build_gui():
             ToolTip(self._open_dest_btn, "Open the destination folder in Finder/Explorer")
             ToolTip(self._src_browse_btn, "Select the source folder to copy from")
             ToolTip(self._dst_browse_btn, "Select the destination folder to copy to")
+            ToolTip(self._copy_log_btn, "Copy all log entries to the system clipboard")
             ToolTip(self._leaked_label, "Threads currently frozen in FUSE reads. "
                                         "Engine will abort if too many threads hang.")
             ToolTip(settings_frame, "Configure FUSE-safe copy parameters")
@@ -1205,13 +1133,18 @@ def build_gui():
             """Select all text in entry when focused."""
             event.widget.after_idle(event.widget.selection_range, 0, tk.END)
 
+        def _on_copy_log(self):
+            """Copy the log text to the clipboard."""
+            content = self._log_text.get("1.0", tk.END)
+            self._root.clipboard_clear()
+            self._root.clipboard_append(content)
+            self._log("Log content copied to clipboard.", "info")
+
         def _browse(self, var: tk.StringVar):
             path = filedialog.askdirectory(initialdir=var.get() or str(Path.home()))
             if path:
                 var.set(path)
 
-        def _on_start(self):
-            self._root.title(f"[Starting...] pCloud Safe Copier v{__version__}")
         def _on_start(self, event=None):
             source = self._source_var.get().strip()
             dest = self._dest_var.get().strip()
@@ -1239,7 +1172,6 @@ def build_gui():
                 return
 
             self._resume_manifest = None
-            self._start_btn.config(state=tk.DISABLED, text="Start Copy")
             self._start_btn.config(state=tk.DISABLED)
             self._open_src_btn.config(state=tk.DISABLED)
             self._open_dest_btn.config(state=tk.DISABLED)
@@ -1267,9 +1199,6 @@ def build_gui():
                         "Cancel the copy?\nProgress is saved for resume."):
                     self._engine.cancel()
 
-        def _on_open_dest(self, event=None):
-            dest = self._dest_var.get().strip()
-            if not dest or not os.path.isdir(dest):
         def _open_folder(self, path: str, description: str):
             if not path or not os.path.isdir(path):
                 return
@@ -1293,12 +1222,7 @@ def build_gui():
             if str(self._start_btn.cget('state')) == str(tk.NORMAL):
                 self._on_start()
 
-        def _on_focus_in(self, event):
-            """Auto-select all text when an entry widget gains focus."""
-            event.widget.after_idle(event.widget.selection_range, 0, tk.END)
-            event.widget.selection_range(0, tk.END)
 
-        def _on_load_manifest(self):
         def _on_load_manifest(self, event=None):
             path = filedialog.askopenfilename(
                 title="Select resume manifest",
@@ -1400,15 +1324,11 @@ def build_gui():
                 self._file_progress['value'] = 100
 
             elif msg_type == MsgType.SCAN_PROGRESS:
-                self._root.title(f"[Scanning...] pCloud Safe Copier v{__version__}")
                 self._current_file_var.set(
                     f"Scanning... ({data} directories)")
-                self._root.title(f"SCANNING - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATE_CHANGE:
-                self._root.title(f"[{data}] pCloud Safe Copier v{__version__}")
                 self._current_file_var.set(f"State: {data}")
-                self._root.title(f"[{data}] - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATS_UPDATE:
                 if isinstance(data, ProgressStats):
@@ -1427,54 +1347,10 @@ def build_gui():
                 pct = (stats.bytes_done / stats.bytes_total) * 100
                 self._overall_progress['value'] = pct
 
-            # Update title bar for external progress monitoring
-            title = f"pCloud Safe Copier v{__version__}"
-            if stats.engine_state != "IDLE":
-                title = f"[{pct:>.1f}%] {stats.engine_state} - {title}"
-            self._root.title(title)
-            title = f"{stats.engine_state} - pCloud Safe Copier v{__version__}"
-            if stats.bytes_total > 0:
-                pct = (stats.bytes_done / stats.bytes_total) * 100
-                self._overall_progress['value'] = pct
-                title = f"[{pct:.0f}%] {title}"
-            self._root.title(title)
-            pct = 0
-            if stats.bytes_total > 0:
-                pct = (stats.bytes_done / stats.bytes_total) * 100
-                self._overall_progress['value'] = pct
-
-            # Update window title with progress and state
-            title_pct = f"{int(pct)}%" if stats.bytes_total > 0 else "0%"
-            self._root.title(
-                f"[{title_pct}] {stats.engine_state.title()} — pCloud Safe Copier"
-            )
-            if stats.bytes_total > 0:
-                pct = (stats.bytes_done / stats.bytes_total) * 100
-                self._overall_progress['value'] = pct
-                self._root.title(f"[{pct:.1f}%] [{stats.engine_state}] pCloud Safe Copier v{__version__}")
-            pct = 0.0
-            if stats.bytes_total > 0:
-                pct = (stats.bytes_done / stats.bytes_total) * 100
-                self._overall_progress['value'] = pct
-                self._root.title(
-                    f"[{int(pct)}%] {stats.engine_state} - "
-                    f"pCloud Safe Copier v{__version__}")
-
-            # Update window title with progress
-            self._root.title(f"[{pct:.0f}%] {stats.engine_state} - pCloud Safe Copier v{__version__}")
-            self._root.title(f"[{pct:2.0f}%] {stats.engine_state} — pCloud Safe Copier")
-            state_text = str(stats.engine_state).capitalize()
-            self._root.title(f"{pct:.0f}% {state_text} - pCloud Safe Copier")
-                # Update window title with progress
-                title = f"[{pct:.0f}%] pCloud Safe Copier"
-                if stats.eta_seconds > 0:
-                    title += f" - {fmt_duration(stats.eta_seconds)} left"
-                self._root.title(title)
-
             # Dynamic window title with state and progress
             state_text = stats.engine_state.title()
             if stats.engine_state in ("COPYING", "SCANNING"):
-                self._root.title(f"{state_text} ({pct:.1f}%) - pCloud Safe Copier v{__version__}")
+                self._root.title(f"({pct:.0f}%) {state_text} - pCloud Safe Copier v{__version__}")
             else:
                 self._root.title(f"{state_text} - pCloud Safe Copier v{__version__}")
 
@@ -1482,63 +1358,21 @@ def build_gui():
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
                 self._file_progress['value'] = fpct
-            elif stats.current_file_bytes == 0 and stats.current_file_total == 0:
-                # Between files — leave at 100 or 0
-                pass
-            self._files_var.set(
-                f"Files: {stats.files_done}/{stats.files_total}")
-            self._bytes_var.set(
-                f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
-            self._rate_var.set(
-                f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
 
-            eta_str = f"ETA: {fmt_duration(stats.eta_seconds)}"
-            if stats.eta_seconds > 0:
-                finish = datetime.now() + timedelta(seconds=stats.eta_seconds)
-                eta_str += f" (Finish at {finish.strftime('%H:%M')})"
-            self._eta_var.set(eta_str)
+            self._files_var.set(f"Files: {stats.files_done}/{stats.files_total}")
+            self._bytes_var.set(f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
+            self._rate_var.set(f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
+
             # ETA with "Finish at" time
-            eta_str = fmt_duration(stats.eta_seconds)
-            if stats.eta_seconds > 0 and stats.engine_state == "COPYING":
-                finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
-                eta_str += f" (Finish at {finish_time.strftime('%H:%M')})"
-            self._eta_var.set(f"ETA: {eta_str}")
-            eta_str = f"ETA: {fmt_duration(stats.eta_seconds)}"
-            if stats.eta_seconds > 0:
-                finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
-                eta_str += f" (Finish at {finish_time.strftime('%H:%M')})"
-            self._eta_var.set(eta_str)
-            eta_str = fmt_duration(stats.eta_seconds)
-            if stats.eta_seconds > 0:
-                finish_time = datetime.now() + timedelta(seconds=stats.eta_seconds)
-                eta_str += f" (Finish at {finish_time.strftime('%H:%M')})"
-            self._eta_var.set(f"ETA: {eta_str}")
             eta_text = f"ETA: {fmt_duration(stats.eta_seconds)}"
             if stats.eta_seconds > 0:
                 finish_at = (datetime.now() + timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
                 eta_text += f" (Finish at {finish_at})"
             self._eta_var.set(eta_text)
-                finish_at = datetime.now() + timedelta(seconds=stats.eta_seconds)
-                eta_text += f" (Finish at {finish_at.strftime('%H:%M')})"
-            self._eta_var.set(eta_text)
-            eta_str = fmt_duration(stats.eta_seconds)
-            if stats.eta_seconds > 0:
-                finish_at = (datetime.now() +
-                             timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
-                eta_str += f" (Finish at {finish_at})"
-            self._eta_var.set(f"ETA: {eta_str}")
 
-            self._errors_var.set(
-                f"Failed: {stats.files_failed} | "
-                f"Skipped: {stats.files_skipped}")
+            self._errors_var.set(f"Failed: {stats.files_failed} | Skipped: {stats.files_skipped}")
             if stats.leaked_threads > 0:
-                self._leaked_var.set(
-                    f"Stuck threads: {stats.leaked_threads}")
-
-            # Update window title with progress
-            pct = (stats.bytes_done / stats.bytes_total * 100) if stats.bytes_total > 0 else 0
-            eta = fmt_duration(stats.eta_seconds)
-            self._root.title(f"({pct:.0f}%) {eta} left — pCloud Safe Copier")
+                self._leaked_var.set(f"Stuck threads: {stats.leaked_threads}")
 
         def _on_finished(self, summary: dict):
             self._start_btn.config(state=tk.NORMAL, text="Start Copy")
@@ -1588,16 +1422,10 @@ def build_gui():
         # ── Log helper ──────────────────────────────────────────────
 
         def _log(self, message: str, tag: str = "info"):
-            # Only auto-scroll if the user is already at the bottom
-            at_bottom = self._log_text.yview()[1] >= 0.99
-            # Check if user is scrolled to the bottom before adding text
-            at_bottom = self._log_text.yview()[1] >= 0.99
-            # Only auto-scroll if the user is already at the bottom
+            # Intelligent scrolling: only snap to bottom if already there
             at_bottom = self._log_text.yview()[1] >= 0.99
 
             self._log_text.config(state=tk.NORMAL)
-            # Intelligent scrolling: only snap to bottom if already there
-            at_bottom = self._log_text.yview()[1] >= 0.99
 
             ts = datetime.now().strftime("%H:%M:%S")
             self._log_text.insert(tk.END, f"[{ts}] {message}\n", tag)

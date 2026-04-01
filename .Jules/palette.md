@@ -53,3 +53,7 @@
 ## 2025-05-17 - [Operational Feedback with Absolute Timestamps]
 **Learning:** Providing an ETA in terms of duration (e.g., "3m 32s") is helpful, but augmenting it with an absolute finish time (e.g., "Finish at 14:45") provides better situational awareness for the user. Using `timedelta` makes this easy to implement in Python.
 **Action:** Always consider adding absolute finish times to progress displays where an ETA is available.
+
+## 2026-03-31 - [Tkinter Clipboard Integration and Log Management]
+**Learning:** Implementing a "Copy Log" feature in Tkinter requires using `root.clipboard_clear()` before `root.clipboard_append()` to ensure the system clipboard is correctly updated with the current widget content. Additionally, grouping log controls (like a Copy button) in a sub-frame within the Log area improves discoverability and keeps the interface organized.
+**Action:** Use a dedicated header frame for log-related actions and ensure a clean clipboard state before appending new data.
