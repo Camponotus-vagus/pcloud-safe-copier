@@ -930,6 +930,10 @@ def build_gui():
             self._dst_browse_btn.grid(row=1, column=2)
 
             # Auto-select text on focus for easier path editing
+            select_all = lambda e: e.widget.after_idle(
+                e.widget.selection_range, 0, tk.END)
+            self._src_entry.bind("<FocusIn>", select_all)
+            self._dst_entry.bind("<FocusIn>", select_all)
             self._src_entry.bind("<FocusIn>", self._on_focus_in)
             self._dst_entry.bind("<FocusIn>", self._on_focus_in)
 
@@ -1088,6 +1092,12 @@ def build_gui():
             log_frame = ttk.LabelFrame(self._root, text="Log", padding=4)
             log_frame.pack(fill=tk.BOTH, expand=True, **pad)
 
+            log_header = ttk.Frame(log_frame)
+            log_header.pack(fill=tk.X, padx=4, pady=(0, 4))
+            self._copy_log_btn = ttk.Button(log_header, text="Copy Log",
+                                           command=self._on_copy_log)
+            self._copy_log_btn.pack(side=tk.RIGHT)
+
             self._log_text = scrolledtext.ScrolledText(
                 log_frame, height=12, state=tk.DISABLED,
                 font=self._get_mono_font(), wrap=tk.WORD)
@@ -1098,6 +1108,15 @@ def build_gui():
             self._log_text.tag_configure("info", foreground="#1565c0")
 
             # Add tooltips
+            ToolTip(self._start_btn, "Start the copy process (Enter)")
+            ToolTip(self._pause_btn, "Temporarily pause copying")
+            ToolTip(self._resume_btn, "Resume the paused copy")
+            ToolTip(self._cancel_btn, "Cancel the copy and save manifest (Esc)")
+            ToolTip(self._manifest_btn, "Resume from a previously saved .json manifest")
+            ToolTip(self._open_dest_btn, "Open the destination folder in Finder/Explorer")
+            ToolTip(self._src_browse_btn, "Select the source folder to copy from")
+            ToolTip(self._dst_browse_btn, "Select the destination folder to copy to")
+            ToolTip(self._copy_log_btn, "Copy all log entries to the system clipboard")
             ToolTip(self._open_src_btn, "Open the source folder in Finder/Explorer.")
             ToolTip(self._open_dest_btn, "Open the destination folder in Finder/Explorer.")
             ToolTip(self._src_browse_btn, "Select the source folder to copy from.")
@@ -1124,6 +1143,13 @@ def build_gui():
         def _on_entry_focus(self, event):
             """Select all text in entry when focused."""
             event.widget.after_idle(event.widget.selection_range, 0, tk.END)
+
+        def _on_copy_log(self):
+            """Copy the log text to the clipboard."""
+            content = self._log_text.get("1.0", tk.END)
+            self._root.clipboard_clear()
+            self._root.clipboard_append(content)
+            self._log("Log content copied to clipboard.", "info")
 
         def _browse(self, var: tk.StringVar):
             path = filedialog.askdirectory(initialdir=var.get() or str(Path.home()))
@@ -1157,7 +1183,6 @@ def build_gui():
                 return
 
             self._resume_manifest = None
-            self._start_btn.config(state=tk.DISABLED, text="Start Copy")
             self._start_btn.config(state=tk.DISABLED)
             self._open_src_btn.config(state=tk.DISABLED)
             self._open_dest_btn.config(state=tk.DISABLED)
@@ -1324,15 +1349,11 @@ def build_gui():
                 self._file_progress['value'] = 100
 
             elif msg_type == MsgType.SCAN_PROGRESS:
-                self._root.title(f"[Scanning...] pCloud Safe Copier v{__version__}")
                 self._current_file_var.set(
                     f"Scanning... ({data} directories)")
-                self._root.title(f"SCANNING - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATE_CHANGE:
-                self._root.title(f"[{data}] pCloud Safe Copier v{__version__}")
                 self._current_file_var.set(f"State: {data}")
-                self._root.title(f"[{data}] - pCloud Safe Copier v{__version__}")
 
             elif msg_type == MsgType.STATS_UPDATE:
                 if isinstance(data, ProgressStats):
@@ -1354,6 +1375,7 @@ def build_gui():
             # Dynamic window title with state and progress
             state_text = stats.engine_state.title()
             if stats.engine_state in ("COPYING", "SCANNING"):
+                self._root.title(f"({pct:.0f}%) {state_text} - pCloud Safe Copier v{__version__}")
                 self._root.title(f"[{pct:.1f}%] {state_text} - pCloud Safe Copier v{__version__}")
             else:
                 self._root.title(f"{state_text} - pCloud Safe Copier v{__version__}")
@@ -1362,6 +1384,17 @@ def build_gui():
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
                 self._file_progress['value'] = fpct
+
+            self._files_var.set(f"Files: {stats.files_done}/{stats.files_total}")
+            self._bytes_var.set(f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
+            self._rate_var.set(f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
+
+            # ETA with "Finish at" time
+            eta_text = f"ETA: {fmt_duration(stats.eta_seconds)}"
+            if stats.eta_seconds > 0:
+                finish_at = (datetime.now() + timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
+                eta_text += f" (Finish at {finish_at})"
+            self._eta_var.set(eta_text)
             elif stats.current_file_bytes == 0 and stats.current_file_total == 0:
                 # Between files — leave at 100 or 0
                 pass
@@ -1385,10 +1418,9 @@ def build_gui():
                 self._leaked_var.set(
                     f"Stuck threads: {stats.leaked_threads}")
 
-            # Update window title with progress
-            pct = (stats.bytes_done / stats.bytes_total * 100) if stats.bytes_total > 0 else 0
-            eta = fmt_duration(stats.eta_seconds)
-            self._root.title(f"({pct:.0f}%) {eta} left — pCloud Safe Copier")
+            self._errors_var.set(f"Failed: {stats.files_failed} | Skipped: {stats.files_skipped}")
+            if stats.leaked_threads > 0:
+                self._leaked_var.set(f"Stuck threads: {stats.leaked_threads}")
 
         def _on_finished(self, summary: dict):
             self._start_btn.config(state=tk.NORMAL, text="Start Copy")
@@ -1438,9 +1470,10 @@ def build_gui():
         # ── Log helper ──────────────────────────────────────────────
 
         def _log(self, message: str, tag: str = "info"):
-            self._log_text.config(state=tk.NORMAL)
             # Intelligent scrolling: only snap to bottom if already there
             at_bottom = self._log_text.yview()[1] >= 0.99
+
+            self._log_text.config(state=tk.NORMAL)
 
             ts = datetime.now().strftime("%H:%M:%S")
             self._log_text.insert(tk.END, f"[{ts}] {message}\n", tag)
