@@ -934,6 +934,8 @@ def build_gui():
                 e.widget.selection_range, 0, tk.END)
             self._src_entry.bind("<FocusIn>", select_all)
             self._dst_entry.bind("<FocusIn>", select_all)
+            self._src_entry.bind("<FocusIn>", self._on_focus_in)
+            self._dst_entry.bind("<FocusIn>", self._on_focus_in)
 
             path_frame.columnconfigure(1, weight=1)
 
@@ -1009,6 +1011,10 @@ def build_gui():
                 command=self._on_cancel, state=tk.DISABLED)
             self._cancel_btn.pack(side=tk.LEFT, padx=4)
 
+            self._copy_log_btn = ttk.Button(ctrl_frame, text="Copy Log",
+                command=self._on_copy_log)
+            self._copy_log_btn.pack(side=tk.LEFT, padx=4)
+
             self._open_src_btn = ttk.Button(ctrl_frame, text="Open Source",
                 command=self._on_open_source)
             self._open_src_btn.pack(side=tk.LEFT, padx=4)
@@ -1026,10 +1032,11 @@ def build_gui():
             self._manifest_btn.pack(side=tk.LEFT, padx=4)
 
             for w, t in [
-                (self._start_btn, "Begin the sequential file copy process."),
+                (self._start_btn, "Begin the sequential file copy process (Enter)."),
                 (self._pause_btn, "Halt copy after current file."),
                 (self._resume_btn, "Continue copy from where it was paused."),
-                (self._cancel_btn, "Stop copy and save manifest."),
+                (self._cancel_btn, "Stop copy and save manifest (Esc)."),
+                (self._copy_log_btn, "Copy the entire log to clipboard."),
                 (self._manifest_btn, "Resume interrupted copy from .json manifest."),
             ]: ToolTip(w, t)
 
@@ -1110,9 +1117,13 @@ def build_gui():
             ToolTip(self._src_browse_btn, "Select the source folder to copy from")
             ToolTip(self._dst_browse_btn, "Select the destination folder to copy to")
             ToolTip(self._copy_log_btn, "Copy all log entries to the system clipboard")
+            ToolTip(self._open_src_btn, "Open the source folder in Finder/Explorer.")
+            ToolTip(self._open_dest_btn, "Open the destination folder in Finder/Explorer.")
+            ToolTip(self._src_browse_btn, "Select the source folder to copy from.")
+            ToolTip(self._dst_browse_btn, "Select the destination folder to copy to.")
             ToolTip(self._leaked_label, "Threads currently frozen in FUSE reads. "
                                         "Engine will abort if too many threads hang.")
-            ToolTip(settings_frame, "Configure FUSE-safe copy parameters")
+            ToolTip(settings_frame, "Configure FUSE-safe copy parameters.")
 
         def _select_all(self, event=None):
             """Highlight all text in a widget."""
@@ -1218,10 +1229,24 @@ def build_gui():
         def _on_open_dest(self):
             self._open_folder(self._dest_var.get().strip(), "destination")
 
+        def _on_copy_log(self, event=None):
+            """Copy the entire log text to the system clipboard."""
+            try:
+                log_content = self._log_text.get("1.0", tk.END).strip()
+                if log_content:
+                    self._root.clipboard_clear()
+                    self._root.clipboard_append(log_content)
+                    self._log("Log copied to clipboard", "info")
+            except Exception as e:
+                self._log(f"Failed to copy log: {e}", "warn")
+
         def _on_enter_pressed(self, event=None):
             if str(self._start_btn.cget('state')) == str(tk.NORMAL):
                 self._on_start()
 
+        def _on_focus_in(self, event):
+            """Auto-select all text when an entry widget gains focus."""
+            event.widget.after_idle(event.widget.selection_range, 0, tk.END)
 
         def _on_load_manifest(self, event=None):
             path = filedialog.askopenfilename(
@@ -1351,6 +1376,7 @@ def build_gui():
             state_text = stats.engine_state.title()
             if stats.engine_state in ("COPYING", "SCANNING"):
                 self._root.title(f"({pct:.0f}%) {state_text} - pCloud Safe Copier v{__version__}")
+                self._root.title(f"[{pct:.1f}%] {state_text} - pCloud Safe Copier v{__version__}")
             else:
                 self._root.title(f"{state_text} - pCloud Safe Copier v{__version__}")
 
@@ -1369,6 +1395,28 @@ def build_gui():
                 finish_at = (datetime.now() + timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
                 eta_text += f" (Finish at {finish_at})"
             self._eta_var.set(eta_text)
+            elif stats.current_file_bytes == 0 and stats.current_file_total == 0:
+                # Between files — leave at 100 or 0
+                pass
+            self._files_var.set(
+                f"Files: {stats.files_done}/{stats.files_total}")
+            self._bytes_var.set(
+                f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
+            self._rate_var.set(
+                f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
+
+            eta_str = f"ETA: {fmt_duration(stats.eta_seconds)}"
+            if stats.eta_seconds > 0:
+                finish = datetime.now() + timedelta(seconds=stats.eta_seconds)
+                eta_str += f" (Finish at {finish.strftime('%H:%M')})"
+            self._eta_var.set(eta_str)
+
+            self._errors_var.set(
+                f"Failed: {stats.files_failed} | "
+                f"Skipped: {stats.files_skipped}")
+            if stats.leaked_threads > 0:
+                self._leaked_var.set(
+                    f"Stuck threads: {stats.leaked_threads}")
 
             self._errors_var.set(f"Failed: {stats.files_failed} | Skipped: {stats.files_skipped}")
             if stats.leaked_threads > 0:
