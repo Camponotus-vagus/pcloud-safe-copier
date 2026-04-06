@@ -304,19 +304,31 @@ class CopyEngine:
 
                     if entry.is_symlink():
                         if self._settings.skip_symlinks:
-                            files.append(asdict(FileRecord(
-                                rel_path=rel, status="SKIPPED_SYMLINK")))
+                            files.append({
+                                "rel_path": rel, "status": "SKIPPED_SYMLINK",
+                                "size_bytes": 0, "source_hash": "", "dest_hash": "",
+                                "error_message": "", "retries": 0, "bytes_copied": 0,
+                                "is_empty_dir": False
+                            })
                             self._send(MsgType.LOG, f"SKIP (symlink): {rel}")
                             continue
                         if not os.path.exists(entry.path):
-                            files.append(asdict(FileRecord(
-                                rel_path=rel, status="SKIPPED_BROKEN_LINK")))
+                            files.append({
+                                "rel_path": rel, "status": "SKIPPED_BROKEN_LINK",
+                                "size_bytes": 0, "source_hash": "", "dest_hash": "",
+                                "error_message": "", "retries": 0, "bytes_copied": 0,
+                                "is_empty_dir": False
+                            })
                             self._send(MsgType.LOG, f"SKIP (broken link): {rel}")
                             continue
                         real = os.path.realpath(entry.path)
                         if not real.startswith(root):
-                            files.append(asdict(FileRecord(
-                                rel_path=rel, status="SKIPPED_SYMLINK")))
+                            files.append({
+                                "rel_path": rel, "status": "SKIPPED_SYMLINK",
+                                "size_bytes": 0, "source_hash": "", "dest_hash": "",
+                                "error_message": "", "retries": 0, "bytes_copied": 0,
+                                "is_empty_dir": False
+                            })
                             self._send(MsgType.LOG,
                                 f"SKIP (symlink outside source): {rel}")
                             continue
@@ -329,16 +341,24 @@ class CopyEngine:
                             size = st.st_size
                         except OSError:
                             size = 0
-                        child_files.append(asdict(FileRecord(
-                            rel_path=rel, size_bytes=size)))
+                        child_files.append({
+                            "rel_path": rel, "size_bytes": size,
+                            "source_hash": "", "dest_hash": "", "status": "PENDING",
+                            "error_message": "", "retries": 0, "bytes_copied": 0,
+                            "is_empty_dir": False
+                        })
                 except OSError as e:
                     self._send(MsgType.LOG, f"Error scanning {entry.path}: {e}")
 
             if not child_files and not child_dirs:
                 rel = os.path.relpath(current, root)
                 if current != root:
-                    files.append(asdict(FileRecord(
-                        rel_path=rel, is_empty_dir=True)))
+                    files.append({
+                        "rel_path": rel, "is_empty_dir": True,
+                        "size_bytes": 0, "source_hash": "", "dest_hash": "",
+                        "status": "PENDING", "error_message": "", "retries": 0,
+                        "bytes_copied": 0
+                    })
 
             files.extend(child_files)
             stack.extend(child_dirs)
@@ -1375,7 +1395,6 @@ def build_gui():
             # Dynamic window title with state and progress
             state_text = stats.engine_state.title()
             if stats.engine_state in ("COPYING", "SCANNING"):
-                self._root.title(f"({pct:.0f}%) {state_text} - pCloud Safe Copier v{__version__}")
                 self._root.title(f"[{pct:.1f}%] {state_text} - pCloud Safe Copier v{__version__}")
             else:
                 self._root.title(f"{state_text} - pCloud Safe Copier v{__version__}")
@@ -1384,6 +1403,9 @@ def build_gui():
             if stats.current_file_total > 0:
                 fpct = (stats.current_file_bytes / stats.current_file_total) * 100
                 self._file_progress['value'] = fpct
+            elif stats.current_file_bytes == 0 and stats.current_file_total == 0:
+                # Between files — leave at 100 or 0
+                pass
 
             self._files_var.set(f"Files: {stats.files_done}/{stats.files_total}")
             self._bytes_var.set(f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
@@ -1395,28 +1417,6 @@ def build_gui():
                 finish_at = (datetime.now() + timedelta(seconds=stats.eta_seconds)).strftime("%H:%M")
                 eta_text += f" (Finish at {finish_at})"
             self._eta_var.set(eta_text)
-            elif stats.current_file_bytes == 0 and stats.current_file_total == 0:
-                # Between files — leave at 100 or 0
-                pass
-            self._files_var.set(
-                f"Files: {stats.files_done}/{stats.files_total}")
-            self._bytes_var.set(
-                f"{fmt_bytes(stats.bytes_done)} / {fmt_bytes(stats.bytes_total)}")
-            self._rate_var.set(
-                f"Rate: {fmt_bytes(stats.transfer_rate_bps)}/s")
-
-            eta_str = f"ETA: {fmt_duration(stats.eta_seconds)}"
-            if stats.eta_seconds > 0:
-                finish = datetime.now() + timedelta(seconds=stats.eta_seconds)
-                eta_str += f" (Finish at {finish.strftime('%H:%M')})"
-            self._eta_var.set(eta_str)
-
-            self._errors_var.set(
-                f"Failed: {stats.files_failed} | "
-                f"Skipped: {stats.files_skipped}")
-            if stats.leaked_threads > 0:
-                self._leaked_var.set(
-                    f"Stuck threads: {stats.leaked_threads}")
 
             self._errors_var.set(f"Failed: {stats.files_failed} | Skipped: {stats.files_skipped}")
             if stats.leaked_threads > 0:
