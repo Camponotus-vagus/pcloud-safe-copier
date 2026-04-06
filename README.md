@@ -165,6 +165,24 @@ This tool was born out of frustration: pCloud's FUSE driver on macOS consistentl
 
 The original shell script that inspired this project successfully copied 359 files (721 MB) from a frozen pCloud mount with zero errors.
 
+## Using AI Assistants
+
+You can use an AI assistant (Claude, ChatGPT, Gemini, or similar) to help you install and use this tool. Copy-paste the following prompt and adapt it to your situation:
+
+> I want to use the **pcloud-safe-copier** tool (https://github.com/Camponotus-vagus/pcloud-safe-copier) to safely copy files from a FUSE-mounted cloud drive on my computer.
+>
+> Please help me:
+> 1. Check if I have Python 3.9+ and tkinter installed
+> 2. Download and set up the tool
+> 3. Run a first test copy with a small folder
+> 4. Understand the main options (pause between files, timeout, retries, hash verification)
+>
+> My operating system is: **[macOS / Linux / Windows with WSL]**
+> My cloud drive is: **[pCloud / Google Drive / Dropbox / rclone / SSHFS / other]**
+> The folder I want to copy is approximately: **[size, e.g. 2 GB, 500 files]**
+
+Replace the parts in **[brackets]** with your actual details. The AI will guide you step by step through installation, configuration, and your first copy.
+
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.

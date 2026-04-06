@@ -474,7 +474,7 @@ class CopyEngine:
         dst_rel = self._resolve_dest_path(file_rec)
         dst = Path(self._manifest.dest_root) / dst_rel
 
-        self._validate_destination_path(dst)
+        dst = self._validate_destination_path(dst)
         self._check_destination_space(dst, file_rec.get('size_bytes', 0))
         dst.parent.mkdir(parents=True, exist_ok=True)
 
@@ -493,9 +493,18 @@ class CopyEngine:
         size = file_rec.get('size_bytes', 0)
         if size == 0:
             # Empty file fast path
-            dst.open('wb').close()
+            with dst.open('wb'):
+                pass
             hasher = hashlib.new(self._settings.hash_algorithm)
             file_rec['source_hash'] = hasher.hexdigest()
+            if self._settings.verify_after_copy:
+                dest_hash = self._hash_local_file(dst)
+                file_rec['dest_hash'] = dest_hash
+                if file_rec['source_hash'] != dest_hash:
+                    self._safe_delete(dst)
+                    file_rec['status'] = 'FAILED'
+                    raise IntegrityError(
+                        f"Hash mismatch on empty file {file_rec['rel_path']}")
             file_rec['status'] = 'VERIFIED'
             self._manifest.files_completed += 1
             self._send(MsgType.LOG, f"OK (empty): {file_rec['rel_path']}")
@@ -518,14 +527,16 @@ class CopyEngine:
             try:
                 source_hash = future.result(timeout=timeout)
             except concurrent.futures.TimeoutError:
-                self._leaked_thread_count += 1
+                with self._lock:
+                    self._leaked_thread_count += 1
+                    leaked = self._leaked_thread_count
                 self._safe_delete(dst)
                 file_rec['status'] = 'TIMEOUT'
                 # Don't wait for the stuck worker — just abandon it
                 executor.shutdown(wait=False, cancel_futures=True)
-                if self._leaked_thread_count >= self._settings.max_leaked_threads:
+                if leaked >= self._settings.max_leaked_threads:
                     raise FUSEUnresponsiveError(
-                        f"{self._leaked_thread_count} threads stuck in FUSE")
+                        f"{leaked} threads stuck in FUSE")
                 raise FUSETimeoutError(
                     f"Timeout after {timeout:.0f}s on {file_rec['rel_path']}")
             else:
@@ -625,7 +636,7 @@ class CopyEngine:
         self._seen_paths_lower[lower] = rel
         return rel
 
-    def _validate_destination_path(self, dst: Path):
+    def _validate_destination_path(self, dst: Path) -> Path:
         dst_str = str(dst)
         if len(dst_str) > 1024:
             name = dst.name
@@ -640,7 +651,7 @@ class CopyEngine:
             self._send(MsgType.LOG,
                 f"Path too long ({len(dst_str)} chars), "
                 f"truncated: {dst.name} -> {short}")
-            return
+            return new_dst
         if len(dst.name) > 255:
             ext = dst.suffix
             stem = dst.stem
@@ -652,6 +663,8 @@ class CopyEngine:
             self._send(MsgType.LOG,
                 f"Filename too long ({len(dst.name)} chars), "
                 f"truncated: -> {short}")
+            return dst.parent / short
+        return dst
 
     def _check_destination_space(self, dst: Path, needed_bytes: int):
         try:
@@ -662,8 +675,9 @@ class CopyEngine:
                 raise DiskFullError(
                     f"Need {fmt_bytes(needed_bytes)}, "
                     f"only {fmt_bytes(usage.free)} free")
-        except (OSError, FileNotFoundError):
-            pass
+        except (OSError, FileNotFoundError) as e:
+            self._send(MsgType.LOG,
+                f"Warning: could not check disk space for {dst.parent}: {e}")
 
     def _should_skip_existing(self, file_rec: dict, dst: Path) -> bool:
         if not dst.exists():
