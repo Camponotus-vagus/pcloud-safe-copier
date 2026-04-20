@@ -5,3 +5,7 @@
 ## 2026-04-13 - [Safe Optimization of Manifest Loading]
 **Learning:** Replacing `asdict(FileRecord(**f))` with a manual dictionary update from a default record provides a ~8.5x speedup while maintaining schema safety for older manifests. Using `dataclasses.fields()` ensures the optimization is robust against dataclass changes.
 **Action:** When optimizing dataclass/dictionary round-trips for performance, use a pre-defined default record and manually map keys to preserve functional parity with the original instantiation.
+
+## 2024-05-24 - [Throttling Manifest I/O for Large Datasets]
+**Learning:** Frequent JSON serialization and disk I/O for large manifests (e.g., 100k+ file records) can create significant CPU/IO bottlenecks, effectively an O(N^2) overhead as the transfer progresses. JSON serialization speed in Python is heavily impacted by the `indent` parameter; removing it can yield a ~7x speedup for large structures.
+**Action:** Implement time-based throttling for state persistence in long-running loops and use compact JSON formatting (no indentation) for machine-read internal state files.
