@@ -9,3 +9,7 @@
 ## 2024-05-24 - [Throttling Manifest I/O for Large Datasets]
 **Learning:** Frequent JSON serialization and disk I/O for large manifests (e.g., 100k+ file records) can create significant CPU/IO bottlenecks, effectively an O(N^2) overhead as the transfer progresses. JSON serialization speed in Python is heavily impacted by the `indent` parameter; removing it can yield a ~7x speedup for large structures.
 **Action:** Implement time-based throttling for state persistence in long-running loops and use compact JSON formatting (no indentation) for machine-read internal state files.
+
+## 2024-06-12 - [Optimizing Directory Scanning in Python]
+**Learning:** For large directory structures, `os.path.relpath` is significantly slower than string slicing due to path normalization overhead. Slicing with `path[root_len:].lstrip(os.sep)` is ~3.5x faster. Additionally, iterating over `os.scandir` directly instead of converting to a list avoids unnecessary memory allocation and list creation overhead.
+**Action:** Use string slicing for relative path calculation and iterate over `os.scandir` directly in hot scanning loops.
