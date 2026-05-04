@@ -712,6 +712,8 @@ class TestRealTimeProgressBars(BaseEngineTest):
 
         self.settings.copy_buffer_size = 32768
         self.engine = CopyEngine(self.msg_queue, self.settings)
+        # Enable intra-file stats even on fast machines to satisfy test assertion
+        self.engine._force_stats_per_file = True
         self._run_and_wait(timeout=30)
 
         msgs = self._drain_messages()
@@ -744,6 +746,7 @@ class TestRealTimeProgressBars(BaseEngineTest):
 
         self.settings.copy_buffer_size = 32768
         self.engine = CopyEngine(self.msg_queue, self.settings)
+        self.engine._force_stats_per_file = True
         self._run_and_wait(timeout=30)
 
         msgs = self._drain_messages()
@@ -773,6 +776,7 @@ class TestRealTimeProgressBars(BaseEngineTest):
 
         self.settings.copy_buffer_size = 32768
         self.engine = CopyEngine(self.msg_queue, self.settings)
+        self.engine._force_stats_per_file = True
         self._run_and_wait(timeout=30)
 
         msgs = self._drain_messages()

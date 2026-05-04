@@ -13,3 +13,7 @@
 ## 2024-06-12 - [Optimizing Directory Scanning in Python]
 **Learning:** For large directory structures, `os.path.relpath` is significantly slower than string slicing due to path normalization overhead. Slicing with `path[root_len:].lstrip(os.sep)` is ~3.5x faster. Additionally, iterating over `os.scandir` directly instead of converting to a list avoids unnecessary memory allocation and list creation overhead.
 **Action:** Use string slicing for relative path calculation and iterate over `os.scandir` directly in hot scanning loops.
+
+## 2024-06-20 - [Optimizing Rate Calculations and Stats Throttling]
+**Learning:** Using a list comprehension to prune a rolling window of samples for rate calculation creates an O(N^2) cumulative overhead when updates are high-frequency. Replacing the list with a 'collections.deque' allows for O(1) pruning with 'popleft()'. Furthermore, mixed byte/time throttling for stats updates can still flood the message queue on fast local transfers; transitioning to a pure time-based throttle (e.g., 0.1s) ensures stable CPU usage regardless of transfer speed.
+**Action:** Use 'deque' for rolling windows and favor time-based throttling for UI/stats updates in high-throughput data loops.

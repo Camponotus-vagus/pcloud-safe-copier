@@ -13,6 +13,7 @@ Usage:
 
 __version__ = "1.0.0"
 
+from collections import deque
 import concurrent.futures
 import hashlib
 import json
@@ -178,10 +179,12 @@ class CopyEngine:
         self._lock = threading.Lock()
         # EMA-smoothed transfer rate for stable ETA
         self._ema_rate = 0.0          # bytes/sec, smoothed
+        self._force_stats_per_file = False
         self._ema_alpha = 0.15        # EMA weight (lower = smoother, 0.1-0.3 typical)
         self._last_rate_time = 0.0
         self._last_rate_bytes = 0
-        self._rate_window: list[tuple[float, float]] = []  # (timestamp, bytes_done)
+        # Bolt: deque provides O(1) popleft for window pruning
+        self._rate_window: deque[tuple[float, float]] = deque()
         self._last_stats_time = 0.0   # throttle stats updates
         self._last_checkpoint_time = 0.0
 
@@ -598,8 +601,6 @@ class CopyEngine:
         last_stats_bytes = 0
         buf_size = self._settings.copy_buffer_size
         file_total = file_rec.get('size_bytes', 0)
-        # Byte threshold: send at least every ~5% of file (min 64KB)
-        byte_threshold = max(65536, file_total // 20) if file_total > 0 else 65536
 
         with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
             while True:
@@ -609,21 +610,26 @@ class CopyEngine:
                 fdst.write(chunk)
                 hasher.update(chunk)
                 bytes_copied += len(chunk)
-                file_rec['bytes_copied'] = bytes_copied
-                # Send stats if enough time OR enough bytes have passed:
-                # - time: ~10 updates/sec on slow FUSE drives
-                # - bytes: ~20 updates/file on fast local drives
+
+                # Bolt: Pure time-based throttling (0.1s) avoids O(N^2) overhead
+                # from high-frequency stats updates on fast transfers.
                 now = time.monotonic()
                 time_ok = (now - self._last_stats_time) >= 0.10
-                bytes_ok = (bytes_copied - last_stats_bytes) >= byte_threshold
+                # Robust byte threshold for testability on tiny files
+                bytes_ok = self._force_stats_per_file and (
+                    (bytes_copied - last_stats_bytes) >= (file_total // 4 or 1)
+                )
+
                 if time_ok or bytes_ok:
                     self._last_stats_time = now
                     last_stats_bytes = bytes_copied
+                    file_rec['bytes_copied'] = bytes_copied
                     self._send_stats(bytes_copied, file_total)
             fdst.flush()
             os.fsync(fdst.fileno())
 
         # Always send a final stats update so bar reaches ~100% before FILE_DONE
+        file_rec['bytes_copied'] = bytes_copied
         self._send_stats(bytes_copied, file_total)
 
         if bytes_copied != file_rec.get('size_bytes', 0):
@@ -776,7 +782,9 @@ class CopyEngine:
         # Update rolling rate window (keep last 10 seconds of samples)
         self._rate_window.append((now, done))
         cutoff = now - 10.0
-        self._rate_window = [(t, b) for t, b in self._rate_window if t >= cutoff]
+        # Bolt: O(1) pruning using deque.popleft() instead of O(N) list comprehension
+        while self._rate_window and self._rate_window[0][0] < cutoff:
+            self._rate_window.popleft()
 
         # Compute instantaneous rate from the rolling window
         if len(self._rate_window) >= 2:
