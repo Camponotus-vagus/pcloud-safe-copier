@@ -187,6 +187,8 @@ class CopyEngine:
         self._rate_window: deque[tuple[float, float]] = deque()
         self._last_stats_time = 0.0   # throttle stats updates
         self._last_checkpoint_time = 0.0
+        # Bolt: Cache last created directory to avoid redundant mkdir syscalls
+        self._last_created_dir: Optional[Path] = None
 
     # ── Public API ──────────────────────────────────────────────────────
 
@@ -501,7 +503,12 @@ class CopyEngine:
 
         dst = self._validate_destination_path(dst)
         self._check_destination_space(dst, file_rec.get('size_bytes', 0))
-        dst.parent.mkdir(parents=True, exist_ok=True)
+
+        # Bolt: Avoid redundant mkdir calls for the same parent directory
+        parent = dst.parent
+        if parent != self._last_created_dir:
+            parent.mkdir(parents=True, exist_ok=True)
+            self._last_created_dir = parent
 
         if self._should_skip_existing(file_rec, dst):
             file_rec['status'] = 'SKIPPED_EXISTS'
@@ -644,7 +651,10 @@ class CopyEngine:
 
     def _ensure_directory(self, file_rec: dict):
         dst = Path(self._manifest.dest_root) / file_rec['rel_path']
-        dst.mkdir(parents=True, exist_ok=True)
+        # Bolt: Avoid redundant mkdir calls for the same directory
+        if dst != self._last_created_dir:
+            dst.mkdir(parents=True, exist_ok=True)
+            self._last_created_dir = dst
         file_rec['status'] = 'VERIFIED'
 
     def _resolve_dest_path(self, file_rec: dict) -> str:
