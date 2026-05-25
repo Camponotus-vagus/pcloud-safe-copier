@@ -17,3 +17,7 @@
 ## 2024-06-20 - [Optimizing Rate Calculations and Stats Throttling]
 **Learning:** Using a list comprehension to prune a rolling window of samples for rate calculation creates an O(N^2) cumulative overhead when updates are high-frequency. Replacing the list with a 'collections.deque' allows for O(1) pruning with 'popleft()'. Furthermore, mixed byte/time throttling for stats updates can still flood the message queue on fast local transfers; transitioning to a pure time-based throttle (e.g., 0.1s) ensures stable CPU usage regardless of transfer speed.
 **Action:** Use 'deque' for rolling windows and favor time-based throttling for UI/stats updates in high-throughput data loops.
+
+## 2026-05-25 - [Optimizing Redundant Directory Creation]
+**Learning:** In file-by-file copy operations, especially on high-latency filesystems like FUSE or network mounts, calling `mkdir(parents=True, exist_ok=True)` for every file in a directory adds significant cumulative overhead. Caching the last created directory path allows skipping these expensive syscalls for subsequent files in the same directory.
+**Action:** Use a simple 'last_created_dir' cache when performing bulk file operations that require ensuring directory existence.
