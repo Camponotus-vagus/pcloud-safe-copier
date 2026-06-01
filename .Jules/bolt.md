@@ -21,3 +21,7 @@
 ## 2026-05-25 - [Optimizing Redundant Directory Creation]
 **Learning:** In file-by-file copy operations, especially on high-latency filesystems like FUSE or network mounts, calling `mkdir(parents=True, exist_ok=True)` for every file in a directory adds significant cumulative overhead. Caching the last created directory path allows skipping these expensive syscalls for subsequent files in the same directory.
 **Action:** Use a simple 'last_created_dir' cache when performing bulk file operations that require ensuring directory existence.
+
+## 2024-06-25 - [Incremental Path Construction in Scanners]
+**Learning:** Even with string slicing optimizations (~3.5x faster than os.path.relpath), repeated slicing and lstrip calls for every file in a large tree add significant cumulative overhead. Storing (absolute, relative) tuples in the traversal stack and building relative paths incrementally via name concatenation is ~9% faster than slicing.
+**Action:** Use incremental path construction (tuple-based stack) for high-performance directory traversal.

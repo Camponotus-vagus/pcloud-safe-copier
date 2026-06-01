@@ -18,6 +18,7 @@ import concurrent.futures
 import hashlib
 import json
 import logging
+import operator
 import os
 import queue
 import subprocess
@@ -181,6 +182,7 @@ class CopyEngine:
         self._ema_rate = 0.0          # bytes/sec, smoothed
         self._force_stats_per_file = False
         self._ema_alpha = 0.15        # EMA weight (lower = smoother, 0.1-0.3 typical)
+        self._ema_complement = 1.0 - self._ema_alpha
         self._last_rate_time = 0.0
         self._last_rate_bytes = 0
         # Bolt: deque provides O(1) popleft for window pruning
@@ -295,26 +297,27 @@ class CopyEngine:
         self._set_state(EngineState.SCANNING)
         self._send(MsgType.LOG, "Scanning source folder...")
         root = self._manifest.source_root
-        root_len = len(root)
         files = []
         dirs_scanned = 0
         total_bytes = 0
-        stack = [root]
+        # Bolt: Store (abs_path, rel_path) to avoid redundant slicing in the loop
+        stack = [(root, "")]
 
         while stack:
             if self._cancel_event.is_set():
                 return
-            current = stack.pop()
+            curr_abs, curr_rel = stack.pop()
             try:
                 # Bolt: Use context manager and avoid converting to list for better performance
-                with os.scandir(current) as entries:
+                with os.scandir(curr_abs) as entries:
                     child_dirs = []
                     child_files = []
 
                     for entry in entries:
                         try:
-                            # Bolt: Slicing is ~3.5x faster than os.path.relpath
-                            rel = entry.path[root_len:].lstrip(os.sep)
+                            # Bolt: Avoid redundant path slicing for every entry
+                            name = entry.name
+                            rel = f"{curr_rel}{os.sep}{name}" if curr_rel else name
 
                             if entry.is_symlink():
                                 if self._settings.skip_symlinks:
@@ -348,7 +351,7 @@ class CopyEngine:
                                     continue
 
                             if entry.is_dir(follow_symlinks=False):
-                                child_dirs.append(entry.path)
+                                child_dirs.append((entry.path, rel))
                             elif entry.is_file(follow_symlinks=True):
                                 try:
                                     st = entry.stat()
@@ -367,10 +370,9 @@ class CopyEngine:
                             self._send(MsgType.LOG, f"Error scanning {entry.path}: {e}")
 
                     if not child_files and not child_dirs:
-                        rel = current[root_len:].lstrip(os.sep)
-                        if current != root:
+                        if curr_abs != root:
                             files.append({
-                                "rel_path": rel, "is_empty_dir": True,
+                                "rel_path": curr_rel, "is_empty_dir": True,
                                 "size_bytes": 0, "source_hash": "", "dest_hash": "",
                                 "status": "PENDING", "error_message": "", "retries": 0,
                                 "bytes_copied": 0
@@ -380,11 +382,11 @@ class CopyEngine:
                     stack.extend(child_dirs)
 
             except PermissionError:
-                self._send(MsgType.LOG, f"SKIP (permission denied): {current}")
+                self._send(MsgType.LOG, f"SKIP (permission denied): {curr_abs}")
                 continue
             except OSError as e:
                 if e.errno in self.FUSE_ERROR_CODES:
-                    self._send(MsgType.LOG, f"FUSE error scanning {current}: {e}")
+                    self._send(MsgType.LOG, f"FUSE error scanning {curr_abs}: {e}")
                     continue
                 raise
 
@@ -392,8 +394,8 @@ class CopyEngine:
             self._send(MsgType.SCAN_PROGRESS, dirs_scanned)
             time.sleep(self._settings.scan_batch_pause)
 
-        # Bolt: Optimized sort key and used pre-calculated total
-        files.sort(key=lambda f: f['size_bytes'])
+        # Bolt: Optimized sort key (itemgetter is faster than lambda)
+        files.sort(key=operator.itemgetter('size_bytes'))
         self._manifest.files = files
         self._manifest.total_bytes = total_bytes
         self._send(MsgType.LOG,
@@ -521,7 +523,11 @@ class CopyEngine:
             # Empty file fast path
             with dst.open('wb'):
                 pass
-            hasher = hashlib.new(self._settings.hash_algorithm)
+            algo = self._settings.hash_algorithm
+            if algo == "blake2b":
+                hasher = hashlib.blake2b()
+            else:
+                hasher = hashlib.new(algo)
             file_rec['source_hash'] = hasher.hexdigest()
             if self._settings.verify_after_copy:
                 dest_hash = self._hash_local_file(dst)
@@ -597,7 +603,13 @@ class CopyEngine:
     # ── Buffered copy with inline hashing ───────────────────────────────
 
     def _do_buffered_copy(self, src: Path, dst: Path, file_rec: dict) -> str:
-        hasher = hashlib.new(self._settings.hash_algorithm)
+        # Bolt: Avoid overhead of hashlib.new() for the default algorithm.
+        algo = self._settings.hash_algorithm
+        if algo == "blake2b":
+            hasher = hashlib.blake2b()
+        else:
+            hasher = hashlib.new(algo)
+
         bytes_copied = 0
         last_stats_bytes = 0
         buf_size = self._settings.copy_buffer_size
@@ -729,7 +741,11 @@ class CopyEngine:
             return False
 
     def _hash_local_file(self, path: Path) -> str:
-        hasher = hashlib.new(self._settings.hash_algorithm)
+        algo = self._settings.hash_algorithm
+        if algo == "blake2b":
+            hasher = hashlib.blake2b()
+        else:
+            hasher = hashlib.new(algo)
         with open(path, 'rb') as f:
             for chunk in iter(lambda: f.read(self._settings.copy_buffer_size), b''):
                 hasher.update(chunk)
@@ -809,7 +825,7 @@ class CopyEngine:
             self._ema_rate = instant_rate  # seed with first measurement
         else:
             self._ema_rate = (self._ema_alpha * instant_rate +
-                              (1 - self._ema_alpha) * self._ema_rate)
+                              self._ema_complement * self._ema_rate)
 
         # ETA from smoothed rate
         remaining = total - done
@@ -887,8 +903,11 @@ class CopyEngine:
 
 # ── Utility functions ──────────────────────────────────────────────────────
 
+_BYTE_UNITS = ('B', 'KB', 'MB', 'GB', 'TB')
+
+
 def fmt_bytes(n: float) -> str:
-    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+    for unit in _BYTE_UNITS:
         if abs(n) < 1024:
             if unit == 'B':
                 return f"{n:.0f} {unit}"
