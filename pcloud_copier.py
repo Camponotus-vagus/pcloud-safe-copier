@@ -611,14 +611,20 @@ class CopyEngine:
         buf_size = self._settings.copy_buffer_size
         file_total = file_rec.get('size_bytes', 0)
 
+        # Bolt: Pre-allocate buffer and use memoryview with readinto() to avoid
+        # ~N allocations of 'buf_size' bytes, reducing GC pressure and CPU usage.
+        buf = bytearray(buf_size)
+        mv = memoryview(buf)
+
         with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
             while True:
-                chunk = fsrc.read(buf_size)
-                if not chunk:
+                n = fsrc.readinto(buf)
+                if n == 0:
                     break
+                chunk = mv[:n]
                 fdst.write(chunk)
                 hasher.update(chunk)
-                bytes_copied += len(chunk)
+                bytes_copied += n
 
                 # Bolt: Pure time-based throttling (0.1s) avoids O(N^2) overhead
                 # from high-frequency stats updates on fast transfers.
@@ -737,11 +743,17 @@ class CopyEngine:
             return False
 
     def _hash_local_file(self, path: Path) -> str:
-        hasher = self._hasher_factory()
+        # Bolt: Use hashlib.file_digest (Python 3.11+) for a C-optimized loop.
+        # Fallback to manual loop for older Python versions.
         with open(path, 'rb') as f:
+            if hasattr(hashlib, 'file_digest'):
+                return hashlib.file_digest(f, self._hasher_factory).hexdigest()
+
+            # Fallback for Python < 3.11
+            hasher = self._hasher_factory()
             for chunk in iter(lambda: f.read(self._settings.copy_buffer_size), b''):
                 hasher.update(chunk)
-        return hasher.hexdigest()
+            return hasher.hexdigest()
 
     def _check_fuse_health(self):
         def _probe():

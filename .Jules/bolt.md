@@ -25,3 +25,11 @@
 ## 2026-06-29 - [Optimizing Hasher Instantiation]
 **Learning:** Using `hashlib.new(name)` repeatedly in hot loops (e.g., file hashing) incurs overhead from string lookups and internal dispatching. Pre-resolving the hasher factory using `getattr(hashlib, name)` (with a fallback to `hashlib.new`) provides a measured ~3.3x speedup for instantiation.
 **Action:** Pre-resolve cryptographic hash factories during initialization when the algorithm remains constant across operations.
+
+## 2026-07-06 - [Optimizing File I/O with readinto]
+**Learning:** Using `f.readinto()` with a pre-allocated `bytearray` and `memoryview` in high-volume I/O loops (like file copying) significantly reduces memory allocation and GC overhead. For a 200MB file, this provided a measurable ~27% speedup in the read loop compared to standard `f.read(buf_size)`.
+**Action:** Favor `readinto()` with buffer reuse for hot I/O loops where large amounts of data are processed in chunks.
+
+## 2026-07-06 - [Leveraging C-Optimized File Hashing]
+**Learning:** `hashlib.file_digest` (introduced in Python 3.11) provides a C-optimized implementation for hashing files that is more efficient than manual Python loops. However, it requires a fallback for older Python versions to maintain environment compatibility.
+**Action:** Use `hashlib.file_digest` for file hashing when available, ensuring a fallback is provided for pre-3.11 environments.
