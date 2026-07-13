@@ -188,6 +188,9 @@ class CopyEngine:
         self._rate_window: deque[tuple[float, float]] = deque()
         self._last_stats_time = 0.0   # throttle stats updates
         self._last_checkpoint_time = 0.0
+        self._last_disk_check_time = 0.0
+        self._last_disk_check_bytes = 0
+        self._last_free_space = 0
         self._last_created_dir: Optional[Path] = None
         # Bolt: Pre-resolve hasher factory for ~3x faster instantiation
         try:
@@ -716,9 +719,35 @@ class CopyEngine:
         return dst
 
     def _check_destination_space(self, dst: Path, needed_bytes: int):
+        # Bolt: Throttle disk_usage calls to reduce FUSE syscall overhead.
+        now = time.monotonic()
+        bytes_done = self._manifest.bytes_completed if self._manifest else 0
+
+        # Re-check every 5 seconds OR after 512MB copied
+        time_throttled = (now - self._last_disk_check_time) < 5.0
+        byte_throttled = (bytes_done - self._last_disk_check_bytes) < 512 * 1024 * 1024
+
+        # Safety: always check if previously reported free space was low
+        # (less than 2x needed or < 100MB)
+        space_is_low = self._last_free_space < max(needed_bytes * 2, 100 * 1024 * 1024)
+
+        if time_throttled and byte_throttled and not space_is_low:
+            # Use cached free space to check against needed_bytes + margin
+            margin = 10 * 1024 * 1024
+            if self._last_free_space < needed_bytes + margin:
+                # If cached space is low, it might have been okay for a previous
+                # small file but not for this one. Fall through to re-scan.
+                pass
+            else:
+                return
+
         try:
             parent = dst.parent if dst.parent.exists() else dst.parent.parent
             usage = shutil.disk_usage(parent)
+            self._last_disk_check_time = now
+            self._last_disk_check_bytes = bytes_done
+            self._last_free_space = usage.free
+
             margin = 10 * 1024 * 1024  # 10MB
             if usage.free < needed_bytes + margin:
                 raise DiskFullError(
