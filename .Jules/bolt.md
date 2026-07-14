@@ -33,3 +33,7 @@
 ## 2026-07-06 - [Leveraging C-Optimized File Hashing]
 **Learning:** `hashlib.file_digest` (introduced in Python 3.11) provides a C-optimized implementation for hashing files that is more efficient than manual Python loops. However, it requires a fallback for older Python versions to maintain environment compatibility.
 **Action:** Use `hashlib.file_digest` for file hashing when available, ensuring a fallback is provided for pre-3.11 environments.
+
+## 2026-07-13 - [Throttling Disk Usage Checks on FUSE]
+**Learning:** Frequent calls to `shutil.disk_usage` (which triggers `statvfs`) on FUSE-mounted filesystems can introduce significant latency and jitter in high-frequency loops. Throttling these checks using both time (e.g., 5s) and volume (e.g., 512MB) thresholds significantly reduces syscall overhead. A "low-space" safety bypass is essential to ensure accuracy as the disk nears capacity.
+**Action:** Implement dual-threshold throttling for filesystem metadata queries (like free space) in hot loops, with a safety fallback for critical proximity to limits.
