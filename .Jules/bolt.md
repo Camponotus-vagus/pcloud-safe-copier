@@ -1,3 +1,7 @@
+## 2026-07-20 - [Optimizing Directory Creation under Size-Sorted Iteration]
+**Learning:** Sorting files by size (to provide smooth/predictable progress estimation) scatters files from the same directory across the processing queue. This thrashes a single-path directory cache (`_last_created_dir`), causing cache misses and redundant expensive `mkdir` system calls. Upgrading the cache to a set of created paths restores a 100% cache hit rate. Additionally, performing skipping/verification checks *before* making directories and checking free space avoids unnecessary filesystem metadata operations entirely for skipped files.
+**Action:** When iteration order is not grouped by directory path, use a cache set instead of a single-path variable to cache created folders, and reorder fast-path validation checks to precede filesystem mutation/checks.
+
 ## 2025-05-18 - [Optimization of Hot-Loop Object Creation]
 **Learning:** In performance-critical loops such as directory scanning, using `dataclasses.asdict()` on a per-item basis introduces significant overhead due to its recursive nature and generalized data handling. Replacing it with manual dictionary literal creation can yield a substantial (30%+) speedup for operations involving thousands of items.
 **Action:** Favor manual dictionary construction or specialized conversion methods over `asdict()` for high-volume item creation in performance-sensitive paths.
