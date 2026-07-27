@@ -512,9 +512,9 @@ class CopyEngine:
         dst = Path(self._manifest.dest_root) / dst_rel
 
         dst = self._validate_destination_path(dst)
-        self._check_destination_space(dst, file_rec.get('size_bytes', 0))
-        self._mkdir_cached(dst.parent)
 
+        # Bolt: Call _should_skip_existing first to skip directory creation and
+        # space checks entirely for files that are already completed and verified.
         if self._should_skip_existing(file_rec, dst):
             file_rec['status'] = 'SKIPPED_EXISTS'
             self._manifest.files_skipped += 1
@@ -522,6 +522,9 @@ class CopyEngine:
             self._send(MsgType.LOG, f"SKIP (exists): {file_rec['rel_path']}")
             self._send(MsgType.FILE_DONE, file_rec)
             return
+
+        self._check_destination_space(dst, file_rec.get('size_bytes', 0))
+        self._mkdir_cached(dst.parent)
 
         self._send(MsgType.FILE_START, file_rec['rel_path'])
         file_rec['status'] = 'IN_PROGRESS'
@@ -758,10 +761,10 @@ class CopyEngine:
                 f"Warning: could not check disk space for {dst.parent}: {e}")
 
     def _should_skip_existing(self, file_rec: dict, dst: Path) -> bool:
-        if not dst.exists():
-            return False
+        # Bolt: Call dst.stat() directly to avoid a redundant dst.exists() stat call.
         try:
-            dst_size = dst.stat().st_size
+            st = dst.stat()
+            dst_size = st.st_size
             src_size = file_rec.get('size_bytes', -1)
             if dst_size != src_size:
                 return False
