@@ -515,8 +515,8 @@ class CopyEngine:
 
         dst = self._validate_destination_path(dst)
 
-        # Bolt: Call _should_skip_existing first to skip disk space/directory creation
-        # checks completely if the file is already fully copied and verified.
+        # Bolt: Call _should_skip_existing first to skip directory creation and
+        # space checks entirely for files that are already completed and verified.
         if self._should_skip_existing(file_rec, dst):
             file_rec['status'] = 'SKIPPED_EXISTS'
             self._manifest.files_skipped += 1
@@ -525,9 +525,8 @@ class CopyEngine:
             self._send(MsgType.FILE_DONE, file_rec)
             return
 
-        # Bolt: Ensure dst.parent exists first so we can check disk space on it directly.
+        self._check_destination_space(dst, file_rec.get('size_bytes', 0))
         self._mkdir_cached(dst.parent)
-        self._check_destination_space(dst.parent, file_rec.get('size_bytes', 0))
 
         self._send(MsgType.FILE_START, file_rec['rel_path'])
         file_rec['status'] = 'IN_PROGRESS'
@@ -766,10 +765,10 @@ class CopyEngine:
                 f"Warning: could not check disk space for {dst_dir}: {e}")
 
     def _should_skip_existing(self, file_rec: dict, dst: Path) -> bool:
-        # Bolt: Avoid calling dst.exists() followed by dst.stat() which issues
-        # two expensive stat calls on FUSE/network. Call dst.stat() directly.
+        # Bolt: Call dst.stat() directly to avoid a redundant dst.exists() stat call.
         try:
-            dst_size = dst.stat().st_size
+            st = dst.stat()
+            dst_size = st.st_size
             src_size = file_rec.get('size_bytes', -1)
             if dst_size != src_size:
                 return False
