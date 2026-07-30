@@ -191,7 +191,9 @@ class CopyEngine:
         self._last_disk_check_time = 0.0
         self._last_disk_check_bytes = 0
         self._last_free_space = 0
-        self._last_created_dir: Optional[Path] = None
+        # Bolt: Use a set of created directory paths to achieve a 100% cache hit rate for existing directories,
+        # which avoids redundant and expensive mkdir system calls on size-sorted files.
+        self._created_dirs_cache: set[str] = set()
         # Bolt: Pre-resolve hasher factory for ~3x faster instantiation
         try:
             self._hasher_factory = getattr(hashlib, self._settings.hash_algorithm)
@@ -664,10 +666,11 @@ class CopyEngine:
     # ── Helpers ─────────────────────────────────────────────────────────
 
     def _mkdir_cached(self, path: Path):
-        """Skip redundant mkdir syscalls if path matches last created dir."""
-        if self._last_created_dir != path:
+        """Skip redundant mkdir syscalls if path is in the cache."""
+        path_str = str(path)
+        if path_str not in self._created_dirs_cache:
             path.mkdir(parents=True, exist_ok=True)
-            self._last_created_dir = path
+            self._created_dirs_cache.add(path_str)
 
     def _ensure_directory(self, file_rec: dict):
         dst = Path(self._manifest.dest_root) / file_rec['rel_path']
@@ -721,7 +724,7 @@ class CopyEngine:
             return dst.parent / short
         return dst
 
-    def _check_destination_space(self, dst: Path, needed_bytes: int):
+    def _check_destination_space(self, dst_dir: Path, needed_bytes: int):
         # Bolt: Throttle disk_usage calls to reduce FUSE syscall overhead.
         now = time.monotonic()
         bytes_done = self._manifest.bytes_completed if self._manifest else 0
@@ -745,8 +748,9 @@ class CopyEngine:
                 return
 
         try:
-            parent = dst.parent if dst.parent.exists() else dst.parent.parent
-            usage = shutil.disk_usage(parent)
+            # Bolt: Since we call _mkdir_cached(dst.parent) first, dst_dir is
+            # guaranteed to exist, allowing direct shutil.disk_usage call.
+            usage = shutil.disk_usage(dst_dir)
             self._last_disk_check_time = now
             self._last_disk_check_bytes = bytes_done
             self._last_free_space = usage.free
@@ -758,7 +762,7 @@ class CopyEngine:
                     f"only {fmt_bytes(usage.free)} free")
         except (OSError, FileNotFoundError) as e:
             self._send(MsgType.LOG,
-                f"Warning: could not check disk space for {dst.parent}: {e}")
+                f"Warning: could not check disk space for {dst_dir}: {e}")
 
     def _should_skip_existing(self, file_rec: dict, dst: Path) -> bool:
         # Bolt: Call dst.stat() directly to avoid a redundant dst.exists() stat call.
