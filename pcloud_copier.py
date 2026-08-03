@@ -625,29 +625,40 @@ class CopyEngine:
         mv = memoryview(buf)
 
         with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
+            fsrc_readinto = fsrc.readinto
+            fdst_write = fdst.write
+            hasher_update = hasher.update
+            time_monotonic = time.monotonic
+            send_stats = self._send_stats
+            force_stats = self._force_stats_per_file
+            last_stats_time = self._last_stats_time
+
+            chunk_count = 0
             while True:
-                n = fsrc.readinto(buf)
+                n = fsrc_readinto(buf)
                 if n == 0:
                     break
                 chunk = mv[:n]
-                fdst.write(chunk)
-                hasher.update(chunk)
+                fdst_write(chunk)
+                hasher_update(chunk)
                 bytes_copied += n
+                chunk_count += 1
 
-                # Bolt: Pure time-based throttling (0.1s) avoids O(N^2) overhead
-                # from high-frequency stats updates on fast transfers.
-                now = time.monotonic()
-                time_ok = (now - self._last_stats_time) >= 0.10
-                # Robust byte threshold for testability on tiny files
-                bytes_ok = self._force_stats_per_file and (
-                    (bytes_copied - last_stats_bytes) >= (file_total // 4 or 1)
-                )
+                # Bolt: Throttle time.monotonic() calls by checking only once every 16 chunks (2MB with default 128KB buffer)
+                # or if forced by unit tests via force_stats.
+                if chunk_count % 16 == 0 or force_stats:
+                    now = time_monotonic()
+                    time_ok = (now - last_stats_time) >= 0.10
+                    bytes_ok = force_stats and (
+                        (bytes_copied - last_stats_bytes) >= (file_total // 4 or 1)
+                    )
 
-                if time_ok or bytes_ok:
-                    self._last_stats_time = now
-                    last_stats_bytes = bytes_copied
-                    file_rec['bytes_copied'] = bytes_copied
-                    self._send_stats(bytes_copied, file_total)
+                    if time_ok or bytes_ok:
+                        last_stats_time = now
+                        self._last_stats_time = now
+                        last_stats_bytes = bytes_copied
+                        file_rec['bytes_copied'] = bytes_copied
+                        send_stats(bytes_copied, file_total)
             fdst.flush()
             os.fsync(fdst.fileno())
 
