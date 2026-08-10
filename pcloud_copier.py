@@ -525,8 +525,11 @@ class CopyEngine:
             self._send(MsgType.FILE_DONE, file_rec)
             return
 
-        self._check_destination_space(dst, file_rec.get('size_bytes', 0))
+        # Bolt: Call _mkdir_cached first so that the parent directory is guaranteed
+        # to exist before we check for destination disk space. This avoids raising/catching
+        # FileNotFoundError on non-existent directories and enables proper throttling.
         self._mkdir_cached(dst.parent)
+        self._check_destination_space(dst.parent, file_rec.get('size_bytes', 0))
 
         self._send(MsgType.FILE_START, file_rec['rel_path'])
         file_rec['status'] = 'IN_PROGRESS'
