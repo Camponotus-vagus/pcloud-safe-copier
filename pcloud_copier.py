@@ -793,11 +793,11 @@ class CopyEngine:
             return False
 
     def _hash_local_file(self, path: Path) -> str:
-        # Bolt: Use hashlib.file_digest (Python 3.11+) for a C-optimized loop.
-        # Fallback to manual loop for older Python versions.
+        # Bolt: Use pre-resolved _FILE_DIGEST (Python 3.11+) for zero-overhead C-optimized file digest lookup.
+        # Fallback to manual chunking loop for older Python versions (< 3.11).
         with open(path, 'rb') as f:
-            if hasattr(hashlib, 'file_digest'):
-                return hashlib.file_digest(f, self._hasher_factory).hexdigest()
+            if _FILE_DIGEST is not None:
+                return _FILE_DIGEST(f, self._hasher_factory).hexdigest()
 
             # Fallback for Python < 3.11
             hasher = self._hasher_factory()
@@ -956,6 +956,9 @@ class CopyEngine:
 
 
 # ── Utility functions ──────────────────────────────────────────────────────
+
+# Bolt: Cache file_digest lookup at module level to avoid repeated hasattr checks & module dispatching
+_FILE_DIGEST = getattr(hashlib, 'file_digest', None)
 
 # Bolt: Use a constant tuple for units to avoid re-allocation
 _BYTE_UNITS = ('B', 'KB', 'MB', 'GB', 'TB')
