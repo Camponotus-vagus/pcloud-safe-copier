@@ -191,6 +191,10 @@ class CopyEngine:
         self._last_disk_check_time = 0.0
         self._last_disk_check_bytes = 0
         self._last_free_space = 0
+        # Bolt: Pre-instantiate root Path objects to avoid redundant Path(str) parsing in hot copy loop
+        self._source_path: Optional[Path] = None
+        self._dest_path: Optional[Path] = None
+
         # Bolt: Use a set of created directory paths to achieve a 100% cache hit rate for existing directories,
         # which avoids redundant and expensive mkdir system calls on size-sorted files.
         self._created_dirs_cache: set[str] = set()
@@ -201,6 +205,18 @@ class CopyEngine:
             self._hasher_factory = lambda: hashlib.new(self._settings.hash_algorithm)
         # Bolt: Pre-calculate EMA complement to save one subtraction per stats update
         self._ema_complement = 1.0 - self._ema_alpha
+
+    @property
+    def source_path(self) -> Path:
+        if self._source_path is None and self._manifest:
+            self._source_path = Path(self._manifest.source_root)
+        return self._source_path
+
+    @property
+    def dest_path(self) -> Path:
+        if self._dest_path is None and self._manifest:
+            self._dest_path = Path(self._manifest.dest_root)
+        return self._dest_path
 
     # ── Public API ──────────────────────────────────────────────────────
 
@@ -243,6 +259,10 @@ class CopyEngine:
                 settings=asdict(self._settings),
                 started_at=datetime.now().isoformat(),
             )
+
+        # Bolt: Cache root Path instances for fast path joining in file operations
+        self._source_path = Path(self._manifest.source_root)
+        self._dest_path = Path(self._manifest.dest_root)
 
         self._cancel_event.clear()
         self._pause_event.set()
@@ -509,9 +529,9 @@ class CopyEngine:
             f"FAIL (all retries exhausted): {file_rec['rel_path']}")
 
     def _copy_single_file(self, file_rec: dict):
-        src = Path(self._manifest.source_root) / file_rec['rel_path']
+        src = self.source_path / file_rec['rel_path']
         dst_rel = self._resolve_dest_path(file_rec)
-        dst = Path(self._manifest.dest_root) / dst_rel
+        dst = self.dest_path / dst_rel
 
         dst = self._validate_destination_path(dst)
 
@@ -687,7 +707,7 @@ class CopyEngine:
             self._created_dirs_cache.add(path_str)
 
     def _ensure_directory(self, file_rec: dict):
-        dst = Path(self._manifest.dest_root) / file_rec['rel_path']
+        dst = self.dest_path / file_rec['rel_path']
         self._mkdir_cached(dst)
         file_rec['status'] = 'VERIFIED'
 
@@ -916,7 +936,7 @@ class CopyEngine:
         self._last_checkpoint_time = now
 
         try:
-            path = Path(self._manifest.dest_root) / '.pcloud_copy_manifest.json'
+            path = self.dest_path / '.pcloud_copy_manifest.json'
             self._manifest.last_updated = datetime.now().isoformat()
             data = {
                 'source_root': self._manifest.source_root,
