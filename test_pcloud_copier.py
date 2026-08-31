@@ -69,6 +69,29 @@ class TestUtilityFunctions(unittest.TestCase):
     def test_fmt_duration_very_large(self):
         self.assertEqual(fmt_duration(86400 * 30), "--")
 
+    def test_get_manifest_dict(self):
+        q = queue.Queue()
+        s = CopySettings()
+        engine = CopyEngine(q, s)
+        self.assertEqual(engine.get_manifest_dict(), {})
+
+        manifest = CopyManifest(
+            source_root="/test/src",
+            dest_root="/test/dst",
+            files=[{"rel_path": "a.txt", "size_bytes": 100, "status": "COPIED"}],
+            total_bytes=100,
+            files_completed=1,
+        )
+        engine._manifest = manifest
+        m_dict = engine.get_manifest_dict()
+
+        self.assertEqual(m_dict["source_root"], "/test/src")
+        self.assertEqual(m_dict["dest_root"], "/test/dst")
+        self.assertEqual(len(m_dict["files"]), 1)
+        self.assertEqual(m_dict["files"][0]["rel_path"], "a.txt")
+        self.assertEqual(m_dict["files_completed"], 1)
+        self.assertTrue(m_dict["last_updated"])
+
 
 class BaseEngineTest(unittest.TestCase):
     """Base class that sets up temp directories and a CopyEngine."""
