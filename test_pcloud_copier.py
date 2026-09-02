@@ -92,6 +92,43 @@ class TestUtilityFunctions(unittest.TestCase):
         self.assertEqual(m_dict["files_completed"], 1)
         self.assertTrue(m_dict["last_updated"])
 
+    def test_get_manifest_dict_does_not_alias_manifest(self):
+        q = queue.Queue()
+        s = CopySettings()
+        engine = CopyEngine(q, s)
+        manifest = CopyManifest(
+            source_root="/test/src",
+            dest_root="/test/dst",
+            files=[{"rel_path": "a.txt", "size_bytes": 100, "status": "COPIED"}],
+        )
+        engine._manifest = manifest
+        m_dict = engine.get_manifest_dict()
+
+        # Mutate the returned dict
+        m_dict["files"][0]["status"] = "CORRUPTED"
+        m_dict["files"].append({"rel_path": "b.txt"})
+
+        # Live manifest should remain untouched
+        self.assertEqual(engine._manifest.files[0]["status"], "COPIED")
+        self.assertEqual(len(engine._manifest.files), 1)
+
+    def test_get_manifest_dict_has_no_side_effects(self):
+        q = queue.Queue()
+        s = CopySettings()
+        engine = CopyEngine(q, s)
+        manifest = CopyManifest(
+            source_root="/test/src",
+            dest_root="/test/dst",
+            last_updated="2026-01-01T00:00:00",
+        )
+        engine._manifest = manifest
+        m_dict = engine.get_manifest_dict()
+
+        # Returned dictionary should have a fresh timestamp
+        self.assertNotEqual(m_dict["last_updated"], "2026-01-01T00:00:00")
+        # Engine's internal manifest timestamp should NOT be mutated by getter
+        self.assertEqual(engine._manifest.last_updated, "2026-01-01T00:00:00")
+
 
 class BaseEngineTest(unittest.TestCase):
     """Base class that sets up temp directories and a CopyEngine."""

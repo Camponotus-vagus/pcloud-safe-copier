@@ -281,36 +281,33 @@ class CopyEngine:
         self._cancel_event.set()
         self._pause_event.set()
 
+    def _manifest_to_dict(self, files: list) -> dict:
+        # Bolt: Manual construction avoids dataclasses.asdict() recursively copying
+        # the file list (50k+ items), which dominates the call at ~1s per invocation.
+        m = self._manifest
+        return {
+            'source_root': m.source_root,
+            'dest_root': m.dest_root,
+            'settings': m.settings,
+            'files': files,
+            'total_bytes': m.total_bytes,
+            'bytes_completed': m.bytes_completed,
+            'files_completed': m.files_completed,
+            'files_failed': m.files_failed,
+            'files_skipped': m.files_skipped,
+            'started_at': m.started_at,
+            'last_updated': m.last_updated,
+            'version': m.version,
+        }
+
     def get_manifest_dict(self) -> dict:
         if not self._manifest:
             return {}
-        # Bolt: Manual dictionary construction avoids dataclasses.asdict() recursive
-        # copying of large file lists (50k+ items), achieving a ~25,000x speedup.
-        m = self._manifest
-        now_str = datetime.now().isoformat()
-        if hasattr(m, 'last_updated'):
-            m.last_updated = now_str
-
-        if isinstance(m, CopyManifest) or hasattr(m, '__dataclass_fields__'):
-            return {
-                'source_root': m.source_root,
-                'dest_root': m.dest_root,
-                'settings': m.settings if isinstance(m.settings, dict) else asdict(m.settings),
-                'files': m.files,
-                'total_bytes': m.total_bytes,
-                'bytes_completed': m.bytes_completed,
-                'files_completed': m.files_completed,
-                'files_failed': m.files_failed,
-                'files_skipped': m.files_skipped,
-                'started_at': m.started_at,
-                'last_updated': now_str,
-                'version': m.version,
-            }
-        if isinstance(m, dict):
-            d = dict(m)
-            d['last_updated'] = now_str
-            return d
-        return getattr(m, '__dict__', {})
+        # Callers own the result: copy each record so they cannot mutate the live
+        # manifest the worker thread is still writing to.
+        d = self._manifest_to_dict([dict(f) for f in self._manifest.files])
+        d['last_updated'] = datetime.now().isoformat()
+        return d
 
     # ── Background thread ───────────────────────────────────────────────
 
@@ -962,20 +959,8 @@ class CopyEngine:
         try:
             path = self.dest_path / '.pcloud_copy_manifest.json'
             self._manifest.last_updated = datetime.now().isoformat()
-            data = {
-                'source_root': self._manifest.source_root,
-                'dest_root': self._manifest.dest_root,
-                'settings': self._manifest.settings,
-                'files': self._manifest.files,
-                'total_bytes': self._manifest.total_bytes,
-                'bytes_completed': self._manifest.bytes_completed,
-                'files_completed': self._manifest.files_completed,
-                'files_failed': self._manifest.files_failed,
-                'files_skipped': self._manifest.files_skipped,
-                'started_at': self._manifest.started_at,
-                'last_updated': self._manifest.last_updated,
-                'version': self._manifest.version,
-            }
+            # Serialized immediately on this thread, so the live list is safe to pass.
+            data = self._manifest_to_dict(self._manifest.files)
             tmp = path.with_suffix('.tmp')
             # Bolt: Removing indent=2 yields ~7x speedup for JSON serialization
             # and reduces file size by ~25%.
