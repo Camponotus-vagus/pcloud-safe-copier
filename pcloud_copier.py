@@ -281,12 +281,31 @@ class CopyEngine:
         self._cancel_event.set()
         self._pause_event.set()
 
+    def _manifest_to_dict(self, shallow_copy_files: bool = True) -> dict:
+        """Serialize manifest to dict, avoiding recursive dataclass asdict overhead."""
+        if not self._manifest:
+            return {}
+        m = self._manifest
+        m.last_updated = datetime.now().isoformat()
+        # Bolt: Shallow copy dicts to avoid expensive dataclasses.asdict() recursion
+        files = [dict(f) if isinstance(f, dict) else asdict(f) for f in m.files] if shallow_copy_files else m.files
+        return {
+            'source_root': m.source_root,
+            'dest_root': m.dest_root,
+            'settings': m.settings if isinstance(m.settings, dict) else asdict(m.settings),
+            'files': files,
+            'total_bytes': m.total_bytes,
+            'bytes_completed': m.bytes_completed,
+            'files_completed': m.files_completed,
+            'files_failed': m.files_failed,
+            'files_skipped': m.files_skipped,
+            'started_at': m.started_at,
+            'last_updated': m.last_updated,
+            'version': m.version,
+        }
+
     def get_manifest_dict(self) -> dict:
-        if self._manifest:
-            d = asdict(self._manifest) if hasattr(self._manifest, '__dataclass_fields__') else self._manifest.__dict__
-            d['last_updated'] = datetime.now().isoformat()
-            return d
-        return {}
+        return self._manifest_to_dict(shallow_copy_files=True)
 
     # ── Background thread ───────────────────────────────────────────────
 
@@ -937,21 +956,7 @@ class CopyEngine:
 
         try:
             path = self.dest_path / '.pcloud_copy_manifest.json'
-            self._manifest.last_updated = datetime.now().isoformat()
-            data = {
-                'source_root': self._manifest.source_root,
-                'dest_root': self._manifest.dest_root,
-                'settings': self._manifest.settings,
-                'files': self._manifest.files,
-                'total_bytes': self._manifest.total_bytes,
-                'bytes_completed': self._manifest.bytes_completed,
-                'files_completed': self._manifest.files_completed,
-                'files_failed': self._manifest.files_failed,
-                'files_skipped': self._manifest.files_skipped,
-                'started_at': self._manifest.started_at,
-                'last_updated': self._manifest.last_updated,
-                'version': self._manifest.version,
-            }
+            data = self._manifest_to_dict(shallow_copy_files=False)
             tmp = path.with_suffix('.tmp')
             # Bolt: Removing indent=2 yields ~7x speedup for JSON serialization
             # and reduces file size by ~25%.
