@@ -731,10 +731,13 @@ class CopyEngine:
         file_rec['status'] = 'VERIFIED'
 
     def _resolve_dest_path(self, file_rec: dict) -> str:
-        rel = unicodedata.normalize('NFC', file_rec['rel_path'])
+        rel_raw = file_rec['rel_path']
+        # Bolt: ASCII fast-path bypasses expensive unicodedata.normalize C-extension calls
+        # for standard ASCII paths, which are already in NFC format.
+        rel = rel_raw if rel_raw.isascii() else unicodedata.normalize('NFC', rel_raw)
         lower = rel.lower()
-        if lower in self._seen_paths_lower:
-            existing = self._seen_paths_lower[lower]
+        existing = self._seen_paths_lower.get(lower)
+        if existing is not None:
             if existing != rel:
                 p = Path(rel)
                 new_name = f"{p.stem}_case_conflict{p.suffix}"
