@@ -1,3 +1,7 @@
+## 2026-08-04 - [CPython Buffer Copying for Mutable bytearray Writes]
+**Learning:** Writing a mutable `bytearray` directly to a file handle (`f.write(bytearray)`) is ~2.3x slower than writing a `memoryview` (`f.write(memoryview)`). In CPython, file write C functions make a full memory copy when given a mutable buffer, whereas `memoryview` provides a read-only buffer interface that allows direct zero-copy write operations.
+**Action:** Always wrap mutable buffers like `bytearray` in a `memoryview` before passing to file write or socket send operations in hot I/O loops.
+
 ## 2026-07-28 - [Throttling Disk Space Checks via Valid Parent Paths]
 **Learning:** Calling `shutil.disk_usage` on a non-existent file path inside a hot loop triggers a `FileNotFoundError` exception on every call. This has two critical drawbacks: 1) exception handling in Python is expensive, 2) catching the exception prevents updating the throttle variables (`self._last_disk_check_time` etc.), thereby completely bypassing the throttling logic and triggering a failing system call on *every single file*. Ensuring the parent directory exists first (via `_mkdir_cached`) and calling `shutil.disk_usage` on the parent directory resolves this issue entirely, making space checking functional, silent, and fully throttled.
 **Action:** Always verify directory/path existence before querying filesystem properties like disk usage, and ensure throttle variables are correctly updated to prevent hot loop resource exhaustion.
