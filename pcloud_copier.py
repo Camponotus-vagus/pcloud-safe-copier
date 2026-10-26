@@ -452,8 +452,14 @@ class CopyEngine:
                 raise
 
             dirs_scanned += 1
+            # Bolt: Throttle progress messages and scan pause to every 10 directories to reduce queue overhead and speed up scanning
+            if dirs_scanned % 10 == 0 or dirs_scanned == 1:
+                self._send(MsgType.SCAN_PROGRESS, dirs_scanned)
+                if self._settings.scan_batch_pause > 0:
+                    time.sleep(self._settings.scan_batch_pause)
+
+        if dirs_scanned % 10 != 0 and dirs_scanned != 1:
             self._send(MsgType.SCAN_PROGRESS, dirs_scanned)
-            time.sleep(self._settings.scan_batch_pause)
 
         # Bolt: Optimized sort key and used pre-calculated total.
         # itemgetter is ~25% faster than lambda for large lists.
